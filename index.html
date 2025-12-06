@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VIRGIL | Cinematic Journeys</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              'kubrick-yellow': '#f5c71a',
+              'kubrick-black': '#0f0f0f',
+            },
+            fontFamily: {
+              mono: ['Courier New', 'Courier', 'monospace'],
+              sans: ['Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif'],
+            },
+            animation: {
+              fadeIn: 'fadeIn 0.5s ease-out',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0', transform: 'translateY(10px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        background-color: #f5c71a;
+        color: #0f0f0f;
+        overflow-x: hidden;
+      }
+      /* Custom stripe pattern for the ticket */
+      .bg-stripes-yellow-black {
+        background: repeating-linear-gradient(
+          45deg,
+          #0f0f0f,
+          #0f0f0f 10px,
+          #f5c71a 10px,
+          #f5c71a 20px
+        );
+      }
+      /* Hide scrollbar for horizontal scrolling areas but allow functionality */
+      .no-scrollbar::-webkit-scrollbar {
+          display: none;
+      }
+      .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
