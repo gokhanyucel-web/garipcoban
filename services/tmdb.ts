@@ -39,7 +39,7 @@ export const getRealPoster = async (title: string, year: number): Promise<string
   return null;
 };
 
-export const getRealCredits = async (title: string, year: number): Promise<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[]} | null> => {
+export const getRealCredits = async (title: string, year: number): Promise<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[]} | null> => {
     if (!API_KEY) return null;
     const cacheKey = `${title}-${year}-credits-full`;
     if (creditsCache[cacheKey]) return creditsCache[cacheKey];
@@ -64,14 +64,70 @@ export const getRealCredits = async (title: string, year: number): Promise<{dire
                 ?.filter((p: any) => p.job === 'Original Music Composer' || p.job === 'Music')
                 .slice(0, 2)
                 .map((p: any) => p.name) || [];
+            
+            // Get DOP (Director of Photography)
+            const dop = data.credits?.crew
+                ?.filter((p: any) => p.job === 'Director of Photography' || p.job === 'Cinematographer')
+                .slice(0, 2)
+                .map((p: any) => p.name) || [];
 
             const cast = data.credits?.cast?.slice(0, 5).map((p: any) => p.name) || [];
             const runtime = data.runtime || 0;
+            const overview = data.overview || "";
+            const vote_average = data.vote_average || 0;
 
-            const result = { director, cast, runtime, screenplay, music };
+            const result = { director, cast, runtime, screenplay, music, overview, vote_average, dop };
             creditsCache[cacheKey] = result;
             return result;
         }
     } catch (e) { console.error("TMDB Credits Error:", e); }
     return null;
+};
+
+export const getDirectorPicks = async (query: string): Promise<any[]> => {
+    if (!API_KEY) return [];
+    try {
+        // 1. Search for the person (Director)
+        const personUrl = `${BASE_URL}/search/person?api_key=${API_KEY}&query=${encodeURIComponent(query)}`;
+        const personRes = await fetch(personUrl);
+        const personData = await personRes.json();
+
+        if (!personData.results || personData.results.length === 0) {
+            return [];
+        }
+
+        const person = personData.results[0];
+        const personId = person.id;
+        const personName = person.name;
+
+        // 2. Get movie credits for this person
+        const creditsUrl = `${BASE_URL}/person/${personId}/movie_credits?api_key=${API_KEY}`;
+        const creditsRes = await fetch(creditsUrl);
+        const creditsData = await creditsRes.json();
+
+        // 3. Filter for Directing roles
+        let movies = creditsData.crew?.filter((c: any) => c.job === 'Director') || [];
+        
+        // If no directing credits, fallback to cast (maybe they meant an actor)
+        if (movies.length === 0 && creditsData.cast) {
+            movies = creditsData.cast;
+        }
+
+        // 4. Sort by popularity (descending) to get "Picks" / Top films
+        movies.sort((a: any, b: any) => b.popularity - a.popularity);
+
+        // 5. Map to simple format including Overview and Vote Average
+        return movies.slice(0, 10).map((m: any) => ({
+            title: m.title,
+            year: m.release_date ? parseInt(m.release_date.split('-')[0]) : 0,
+            director: personName, // Use the searched person's name as the key director for context
+            posterUrl: m.poster_path ? `${IMAGE_BASE_URL}${m.poster_path}` : undefined,
+            overview: m.overview,
+            vote_average: m.vote_average
+        }));
+
+    } catch (e) {
+        console.error("TMDB Director Picks Error:", e);
+        return [];
+    }
 };
