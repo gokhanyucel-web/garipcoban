@@ -4,6 +4,7 @@ import { ARCHIVE_CATEGORIES, getAllFilms, createFilm, BADGE_TITLES, getHash, INI
 import FilmCard from './components/FilmCard';
 import FilmModal from './components/FilmModal';
 import { getAIListSuggestions } from './services/geminiService';
+import { getDirectorPicks, searchMovies } from './services/tmdb';
 import { Search, Twitter, Instagram, Mail, ShieldAlert, Edit2, Save } from 'lucide-react';
 
 function App() {
@@ -36,12 +37,13 @@ function App() {
   // AI Creator State
   const [isAICreatorOpen, setIsAICreatorOpen] = useState(false);
   const [aiCreatorQuery, setAiCreatorQuery] = useState("");
-  const [aiSuggestions, setAiSuggestions] = useState<AI_Suggestion[]>([]);
+  const [aiSuggestions, setAiSuggestions] = useState<(AI_Suggestion & { posterUrl?: string })[]>([]);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
 
   // Search State
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Film[]>([]);
 
   // Category View State
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
@@ -65,6 +67,18 @@ function App() {
   useEffect(() => { localStorage.setItem('virgil_custom_lists', JSON.stringify(customLists)); }, [customLists]);
   useEffect(() => { localStorage.setItem('virgil_master_overrides', JSON.stringify(masterOverrides)); }, [masterOverrides]);
   useEffect(() => { localStorage.setItem('virgil_user_profile', JSON.stringify(profile)); }, [profile]);
+
+  // Live Search Effect
+  useEffect(() => {
+    if (globalSearchQuery.length > 2) {
+       const timer = setTimeout(() => {
+          searchMovies(globalSearchQuery).then(setSearchResults);
+       }, 300);
+       return () => clearTimeout(timer);
+    } else {
+       setSearchResults([]);
+    }
+  }, [globalSearchQuery]);
 
   // --- HANDLERS ---
 
@@ -147,11 +161,11 @@ function App() {
     setAiSuggestions([]);
   };
 
-  const handleCreateList = () => {
+  const handleCreateListBlank = () => {
       const newId = `custom_${Date.now()}`;
       const newList: CuratedList = {
           id: newId,
-          title: aiCreatorQuery || "UNTITLED JOURNEY",
+          title: "UNTITLED JOURNEY",
           subtitle: "Curated by You",
           description: "A fresh path.",
           tiers: [
@@ -171,12 +185,66 @@ function App() {
       setIsAICreatorOpen(false);
   };
 
-  const handleGenerateAISuggestions = async () => {
+  // UPDATED: Now fetches real data via TMDB and immediately creates a populated list
+  const handleGenerateAndCreate = async () => {
       if (!aiCreatorQuery) return;
       setIsGeneratingAI(true);
-      const suggestions = await getAIListSuggestions(aiCreatorQuery);
-      setAiSuggestions(suggestions);
+      
+      // 1. Try fetching REAL data from TMDB (Director Picks)
+      let suggestions: any[] = await getDirectorPicks(aiCreatorQuery);
+      
+      // 2. Fallback to Gemini if TMDB returns nothing (e.g. thematic queries not matching a person)
+      if (suggestions.length === 0) {
+          const geminiSuggestions = await getAIListSuggestions(aiCreatorQuery);
+          // Convert to consistent format
+          suggestions = geminiSuggestions.map(s => ({
+              title: s.title,
+              year: s.year,
+              director: s.director,
+              posterUrl: undefined, // Gemini doesn't return posters usually
+              overview: undefined,
+              vote_average: 0
+          }));
+      }
+
+      // 3. Create List Structure
+      const newId = `custom_${Date.now()}`;
+      
+      const createPopulatedFilm = (s: any) => {
+          const f = createFilm(s.title, s.year, s.director, s.posterUrl);
+          if (s.overview) f.plot = s.overview; // Inject overview if available
+          if (s.vote_average) f.imdbScore = s.vote_average; // Inject rating if available
+          return f;
+      };
+
+      // Distribute: First 5 to Tier 1, Next 5 to Tier 2
+      const tier1Films = suggestions.slice(0, 5).map(createPopulatedFilm);
+      const tier2Films = suggestions.slice(5, 10).map(createPopulatedFilm);
+
+      const newList: CuratedList = {
+          id: newId,
+          title: aiCreatorQuery.toUpperCase(),
+          subtitle: "Curated Journey",
+          description: `A custom list based on ${aiCreatorQuery}`,
+          tiers: [
+              { level: 1, name: "ESSENTIALS", films: tier1Films },
+              { level: 2, name: "DEEP DIVE", films: tier2Films },
+              { level: 3, name: "TIER 3", films: [] }
+          ],
+          isCustom: true,
+          author: profile.name,
+          privacy: 'public',
+          status: 'draft'
+      };
+
+      setCustomLists(prev => [...prev, newList]);
+      setVaultIds(prev => [...prev, newId]);
+      setSelectedList(newList);
+      setEditingList(newList);
+      setIsEditorMode(true);
+      setIsAICreatorOpen(false);
       setIsGeneratingAI(false);
+      setAiSuggestions([]); // Clear bin
   };
 
   const handleTogglePublish = () => {
@@ -493,11 +561,11 @@ function App() {
                   <div className="flex-1 overflow-y-auto mt-4 pr-2">
                      {globalSearchQuery.length > 2 && (
                        <div className="grid grid-cols-1 gap-4">
-                          {getAllFilms().filter(f => f.title.toLowerCase().includes(globalSearchQuery.toLowerCase()) || f.director.toLowerCase().includes(globalSearchQuery.toLowerCase())).slice(0, 20).map(film => (
-                             <div key={film.id} onClick={() => setSelectedFilm(film)} className="p-4 border-2 border-black hover:bg-black hover:text-[#F5C71A] cursor-pointer flex justify-between items-center group">
+                          {searchResults.map(film => (
+                             <div key={film.id} onClick={() => { setSelectedFilm(film); setIsSearchOpen(false); }} className="p-4 border-2 border-black hover:bg-black hover:text-[#F5C71A] cursor-pointer flex justify-between items-center group">
                                 <div>
                                    <h3 className="text-xl font-black uppercase">{film.title}</h3>
-                                   <p className="font-mono text-sm opacity-60 group-hover:opacity-100">{film.year} • {film.director}</p>
+                                   <p className="font-mono text-sm opacity-60 group-hover:opacity-100">{film.year}</p>
                                 </div>
                                 <span className="font-bold text-sm">→</span>
                              </div>
@@ -513,19 +581,20 @@ function App() {
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
                 <div className="w-full max-w-2xl bg-[#F5C71A] border-4 border-black p-8 shadow-[12px_12px_0px_0px_#fff]">
                     <h2 className="text-3xl font-black uppercase mb-4">Create New Journey</h2>
-                    <p className="font-mono mb-4 text-sm">Enter a director, genre, or theme. The AI will assist you in building your tiers.</p>
+                    <p className="font-mono mb-4 text-sm">Enter a director, genre, or theme. Virgil will fetch director picks from TMDB or consult the AI archives.</p>
                     <input 
                         type="text" 
                         placeholder="e.g. Christopher Nolan, 90s Cyberpunk..." 
                         className="w-full p-4 text-xl font-bold uppercase border-2 border-black mb-4 focus:outline-none"
                         value={aiCreatorQuery}
                         onChange={(e) => setAiCreatorQuery(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleGenerateAndCreate()}
                     />
                     <div className="flex gap-4">
-                        <button onClick={handleGenerateAISuggestions} disabled={isGeneratingAI} className="flex-1 bg-black text-[#F5C71A] py-3 font-black uppercase hover:opacity-80">
+                        <button onClick={handleGenerateAndCreate} disabled={isGeneratingAI} className="flex-1 bg-black text-[#F5C71A] py-3 font-black uppercase hover:opacity-80 disabled:opacity-50">
                             {isGeneratingAI ? "Consulting Archives..." : "Start & Generate"}
                         </button>
-                         <button onClick={handleCreateList} className="flex-1 bg-white text-black border-2 border-black py-3 font-black uppercase hover:bg-gray-100">
+                         <button onClick={handleCreateListBlank} className="flex-1 bg-white text-black border-2 border-black py-3 font-black uppercase hover:bg-gray-100">
                             Start Blank
                         </button>
                         <button onClick={() => setIsAICreatorOpen(false)} className="px-4 py-3 font-bold uppercase underline">Cancel</button>
@@ -889,12 +958,13 @@ function App() {
                   {aiSuggestions.map((s, i) => (
                       <div 
                         key={i} 
-                        className="min-w-[150px] bg-[#F5C71A] text-black p-2 border border-white cursor-grab active:cursor-grabbing hover:scale-105 transition-transform"
+                        className="min-w-[150px] bg-[#F5C71A] text-black p-2 border border-white cursor-grab active:cursor-grabbing hover:scale-105 transition-transform flex flex-col items-center gap-1"
                         draggable
-                        onDragStart={(e) => { e.dataTransfer.setData("filmData", JSON.stringify(createFilm(s.title, s.year, s.director))); e.dataTransfer.setData("sourceTier", "draft"); }}
+                        onDragStart={(e) => { e.dataTransfer.setData("filmData", JSON.stringify(createFilm(s.title, s.year, s.director, s.posterUrl))); e.dataTransfer.setData("sourceTier", "draft"); }}
                       >
-                          <p className="font-bold text-xs uppercase">{s.title}</p>
-                          <p className="text-[10px]">{s.director}</p>
+                          {s.posterUrl && <img src={s.posterUrl} className="w-full h-24 object-cover border border-black mb-1" />}
+                          <p className="font-bold text-[10px] uppercase text-center leading-tight">{s.title}</p>
+                          <p className="text-[9px] opacity-70">{s.year} • {s.director}</p>
                       </div>
                   ))}
               </div>
