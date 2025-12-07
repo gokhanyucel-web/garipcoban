@@ -256,7 +256,7 @@ function App() {
   const handleAddTier = (isSeries: boolean) => {
     if (!editingList) return;
     const tiers = isSeries ? (editingList.seriesTiers || []) : editingList.tiers;
-    if (tiers.length >= 7) return; 
+    if (tiers.length >= 30) return; // CONSTRAINT: Updated to 30
     const newTier: Tier = { level: tiers.length + 1, name: `TIER ${tiers.length + 1}`, films: [] };
     const updatedList = { ...editingList };
     if (isSeries) updatedList.seriesTiers = [...(updatedList.seriesTiers || []), newTier];
@@ -286,6 +286,12 @@ function App() {
     const updatedList = { ...editingList };
     const targetTiers = isSeries ? (updatedList.seriesTiers || []) : updatedList.tiers;
     
+    // CONSTRAINT: Max 6 films per tier
+    if (targetTiers[tierIndex].films.length >= 6) {
+        alert("Maximum 6 films allowed per tier.");
+        return;
+    }
+
     const allExistingFilms = [...updatedList.tiers.flatMap(t => t.films), ...(updatedList.seriesTiers?.flatMap(t => t.films) || [])];
     if (allExistingFilms.some(f => f.id === film.id)) {
         alert("This film is already in your list.");
@@ -320,6 +326,12 @@ function App() {
       const filmData = JSON.parse(e.dataTransfer.getData("filmData")) as Film;
 
       const allExistingFilms = [...editingList.tiers.flatMap(t => t.films), ...(editingList.seriesTiers?.flatMap(t => t.films) || [])];
+      
+      // Check limits before drop
+      if (editingList.tiers[targetTierIndex].films.length >= 6 && sourceTierIndex !== targetTierIndex) {
+          alert("Maximum 6 films allowed per tier.");
+          return;
+      }
       
       if (isNaN(sourceTierIndex) && allExistingFilms.some(f => f.id === filmData.id)) {
           alert("Film already in list.");
@@ -923,6 +935,8 @@ function App() {
         )}
         
         <div className="flex flex-col items-center gap-4 mt-4 w-full max-w-3xl pointer-events-auto">
+             {/* SERIES TOGGLE HIDDEN AS PER REQUEST */}
+             {/*
              {(currentList.seriesTiers || isEditorMode) && (
               <div className="flex border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-[#F5C71A]">
                 <button onClick={() => setViewMode('cinema')} className={`px-6 py-2 font-black uppercase text-sm ${viewMode === 'cinema' ? 'bg-black text-[#F5C71A]' : 'bg-transparent'}`}>Cinema</button>
@@ -930,6 +944,7 @@ function App() {
                 <button onClick={() => setViewMode('series')} className={`px-6 py-2 font-black uppercase text-sm ${viewMode === 'series' ? 'bg-black text-[#F5C71A]' : 'bg-transparent'}`}>Series</button>
               </div>
             )}
+            */}
             
             {!isEditorMode && (
                 <div className="flex flex-wrap justify-center gap-4 border-t-2 border-black/20 pt-4 w-full">
@@ -1008,6 +1023,16 @@ function App() {
                         />
                       </div>
                   ))}
+                  
+                  {/* ADD FILM BUTTON (EDITOR MODE ONLY) */}
+                  {isEditorMode && tier.films.length < 6 && (
+                    <button 
+                        onClick={() => setShowTierSearchModal({ tierIndex, isSeries: viewMode === 'series' })}
+                        className="w-32 md:w-44 h-72 md:h-80 border-2 border-dashed border-black flex items-center justify-center hover:bg-black hover:text-[#F5C71A] transition-colors group"
+                    >
+                        <span className="text-6xl font-thin group-hover:scale-110 transition-transform">+</span>
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

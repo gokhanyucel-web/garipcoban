@@ -55,7 +55,7 @@ const FilmCard: React.FC<FilmCardProps> = ({ film, log, onClick, isEditable, onR
             <img 
                 src={displayPoster} 
                 alt={film.title}
-                className={`w-full h-full object-cover transition-all duration-500 ${isWatched ? 'grayscale opacity-60' : 'grayscale opacity-80 group-hover:grayscale-0 group-hover:opacity-100'}`}
+                className={`w-full h-full object-cover transition-all duration-500 ${isWatched ? 'grayscale-0 opacity-100' : 'grayscale opacity-80 group-hover:grayscale-0 group-hover:opacity-100'}`}
                 loading="lazy"
             />
         </div>
