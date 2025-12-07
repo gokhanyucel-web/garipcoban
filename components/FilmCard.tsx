@@ -30,13 +30,13 @@ const FilmCard: React.FC<FilmCardProps> = ({ film, log, onClick, isEditable, onR
 
   return (
     <div 
-      className={`relative group ${isEditable ? 'opacity-100' : ''}`}
+      className={`relative group ${isEditable ? 'opacity-100' : ''} hover:z-50`}
       draggable={isEditable}
       onDragStart={(e) => { if(onDragStart) onDragStart(e, film); }}
     >
       {isEditable && (
-         <div className="absolute -top-3 right-0 z-50 flex gap-1">
-            <button onClick={(e) => { e.stopPropagation(); onRemove && onRemove(film.id); }} className="bg-red-600 text-white w-5 h-5 flex items-center justify-center text-xs font-bold border border-black hover:scale-110 transition-transform">✕</button>
+         <div className="absolute -top-3 right-0 z-[60] flex gap-1">
+            <button onClick={(e) => { e.stopPropagation(); onRemove && onRemove(film.id); }} className="bg-red-600 text-white w-5 h-5 flex items-center justify-center text-xs font-bold border border-black hover:scale-110 transition-transform cursor-pointer">✕</button>
          </div>
       )}
 

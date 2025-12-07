@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Film, CuratedList, UserDatabase, UserFilmLog, Tier, Badge, AI_Suggestion, SortOption } from './types';
 import { ARCHIVE_CATEGORIES, getAllFilms, createFilm, BADGE_TITLES, getHash, INITIATE_SYNONYMS, ADEPT_SYNONYMS } from './constants';
 import FilmCard from './components/FilmCard';
 import FilmModal from './components/FilmModal';
 import { getAIListSuggestions } from './services/geminiService';
 import { getDirectorPicks, searchMovies } from './services/tmdb';
-import { Search, Twitter, Instagram, Mail, ShieldAlert, Edit2, Save } from 'lucide-react';
+import { Search, Twitter, Instagram, Mail, ShieldAlert, Edit2, Save, Trash2, Camera } from 'lucide-react';
 
 function App() {
   // --- STATE ---
@@ -20,8 +20,9 @@ function App() {
   const [vaultIds, setVaultIds] = useState<string[]>([]);
   
   // Profile State
-  const [profile, setProfile] = useState<{name: string, motto: string}>({ name: "Gökhan", motto: "The Architect" });
+  const [profile, setProfile] = useState<{name: string, motto: string, avatar?: string}>({ name: "Gökhan", motto: "The Architect" });
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // UGC / Editor State
   const [customLists, setCustomLists] = useState<CuratedList[]>([]);
@@ -123,6 +124,17 @@ function App() {
         return;
     }
 
+    // CHECK FOR EXISTING FORK (Remix)
+    const existingFork = customLists.find(l => l.originalListId === selectedList.id);
+    if (existingFork) {
+        if(window.confirm("You already have a remix of this journey. Would you like to open it?")) {
+            setSelectedList(existingFork);
+            setEditingList(existingFork);
+            setIsEditorMode(true);
+        }
+        return;
+    }
+
     // NORMAL MODE: Create Copy
     const newId = `custom_${Date.now()}`;
     const forkedList: CuratedList = {
@@ -142,6 +154,18 @@ function App() {
     setSelectedList(forkedList);
     setEditingList(forkedList);
     setIsEditorMode(true);
+  };
+
+  const handleDeleteList = (e: React.MouseEvent, listId: string) => {
+      e.stopPropagation();
+      if (window.confirm("Are you sure you want to delete this journey? This cannot be undone.")) {
+          setCustomLists(prev => prev.filter(l => l.id !== listId));
+          setVaultIds(prev => prev.filter(id => id !== listId));
+          if (selectedList?.id === listId) {
+              setSelectedList(null);
+              setIsEditorMode(false);
+          }
+      }
   };
 
   const handleSaveList = () => {
@@ -312,6 +336,17 @@ function App() {
     setIsEditContextMode(null);
   };
 
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+              setProfile(prev => ({ ...prev, avatar: reader.result as string }));
+          };
+          reader.readAsDataURL(file);
+      }
+  };
+
   const handleDragStart = (e: React.DragEvent, film: Film, sourceTierIndex: number) => {
     e.dataTransfer.setData("filmId", film.id);
     e.dataTransfer.setData("sourceTier", sourceTierIndex.toString());
@@ -382,60 +417,76 @@ function App() {
         if (vaultIds.includes(l.id) && getListProgress(l) >= 100) totalCompleted++;
     });
 
-    const genreCounts: Record<string, number> = {};
-    
+    const genreCounts = {
+        HORROR: 0,
+        SCIFI: 0,
+        NOIR: 0,
+        CLASSIC: 0,
+        ARTHOUSE: 0,
+        GENERAL: 0
+    };
+
     watchedEntries.forEach(([filmId]) => {
-       // Calculate Runtime
+       // Find film info across all lists
        let foundFilm: Film | undefined;
+       let foundListTitle = "";
+
        for (const l of allLists) {
-           foundFilm = l.tiers.flatMap(t => t.films).find(f => f.id === filmId) || 
-                       l.seriesTiers?.flatMap(t => t.films).find(f => f.id === filmId);
-           if (foundFilm) break;
+           const f = l.tiers.flatMap(t => t.films).find(item => item.id === filmId) ||
+                     l.seriesTiers?.flatMap(t => t.films).find(item => item.id === filmId);
+           if (f) {
+               foundFilm = f;
+               foundListTitle = l.title.toUpperCase();
+               break;
+           }
        }
+       
        if (foundFilm) {
            totalRuntime += (foundFilm.runtime || 0);
+
+           // SMART GENRE CALCULATION
+           if (foundFilm.year < 1970) {
+               genreCounts.CLASSIC += 1;
+           }
+           
+           if (foundListTitle.match(/HORROR|FOLK|BODY|VAMPIRE|WITCH|ZOMBIE|CARPENTER|CRONENBERG|LYNCH|VILLENEUVE|EGGERS/)) {
+               genreCounts.HORROR += 1.5; // Weight specific matches higher
+           } else if (foundListTitle.match(/SCI-FI|SPACE|CYBERPUNK|TREK|WARS|MACHINE|NOLAN|VILLENEUVE|KUBRICK/)) {
+               genreCounts.SCIFI += 1.5;
+           } else if (foundListTitle.match(/NOIR|HEIST|CRIME|MAFIA|FINCHER|SCORSESE|TARANTINO|COEN|LEONE/)) {
+               genreCounts.NOIR += 1.5;
+           } else if (foundListTitle.match(/ART|SLOW|FEMALE|FRENCH|ITALIAN|BERGMAN|TARKOVSKY|WONG|OZU|VARDA|ALMODOVAR|HANEKE|VON TRIER/)) {
+               genreCounts.ARTHOUSE += 1.5;
+           } else {
+               genreCounts.GENERAL += 1;
+           }
        }
-
-       // Calculate Genre Archetype
-       const containingLists = allLists.filter(l => 
-          l.tiers.some(t => t.films.some(f => f.id === filmId)) ||
-          l.seriesTiers?.some(t => t.films.some(f => f.id === filmId))
-       );
-       
-       containingLists.forEach(l => {
-          let key = 'GENERAL';
-          const t = l.title.toUpperCase();
-          if (t.includes('HORROR') || t.includes('FOLK') || t.includes('BODY')) key = 'HORROR';
-          else if (t.includes('SCI-FI') || t.includes('SPACE') || t.includes('CYBERPUNK') || t.includes('TREK') || t.includes('WARS')) key = 'SCI-FI';
-          else if (t.includes('NOIR') || t.includes('HEIST') || t.includes('CRIME') || t.includes('MAFIA')) key = 'NOIR';
-          else if (t.includes('ART') || t.includes('WAVE') || t.includes('SLOW') || t.includes('FEMALE')) key = 'ARTHOUSE';
-          else if (t.includes('KUBRICK') || t.includes('TARANTINO') || t.includes('HITCHCOCK') || t.includes('SCORSESE')) key = 'AUTEUR';
-          
-          genreCounts[key] = (genreCounts[key] || 0) + 1;
-       });
     });
 
-    let topGenre = 'INITIATE';
+    let topGenre = 'GENERAL';
     let maxCount = 0;
-    Object.entries(genreCounts).forEach(([genre, count]) => {
-       if (count > maxCount) { maxCount = count; topGenre = genre; }
+    (Object.keys(genreCounts) as Array<keyof typeof genreCounts>).forEach(key => {
+       if (key !== 'GENERAL' && genreCounts[key] > maxCount) { 
+           maxCount = genreCounts[key]; 
+           topGenre = key; 
+       }
     });
 
-    let title = "OBSERVER";
-    if (topGenre === 'HORROR') title = "ABYSS WALKER";
-    if (topGenre === 'SCI-FI') title = "MIND SURFER";
-    if (topGenre === 'NOIR') title = "SHADOW HUNTER";
-    if (topGenre === 'ARTHOUSE') title = "POETIC SOUL";
-    if (topGenre === 'AUTEUR') title = "CINEMA DISCIPLE";
+    let archetype = "Observer";
+    if (topGenre === 'HORROR') archetype = "Void Gazer";
+    else if (topGenre === 'SCIFI') archetype = "Futurist";
+    else if (topGenre === 'NOIR') archetype = "Investigator";
+    else if (topGenre === 'ARTHOUSE') archetype = "Poet";
+    else if (topGenre === 'CLASSIC') archetype = "Time Traveler";
     
-    let rank = "NOVICE";
-    if (totalWatched > 10) rank = "ADEPT";
-    if (totalWatched > 50) rank = "MASTER";
-    if (totalCreated > 0) rank = "ARCHITECT"; 
+    let rank = "Novice";
+    if (totalWatched > 100) rank = "Grandmaster";
+    else if (totalWatched > 50) rank = "Master";
+    else if (totalWatched > 10) rank = "Adept";
 
     const totalHours = Math.floor(totalRuntime / 60);
 
-    return { totalWatched, totalLists: vaultIds.length, totalCreated, totalCompleted, totalHours, fullTitle: `${rank} ${title}` };
+    return { totalWatched, totalLists: vaultIds.length, totalCreated, totalCompleted, totalHours, fullTitle: `${rank} ${archetype}` };
   };
   const sherpaIdentity = calculateSherpaIdentity();
 
@@ -690,10 +741,21 @@ function App() {
                 <div className="w-full max-w-5xl mx-auto bg-black text-[#F5C71A] shadow-[12px_12px_0px_0px_rgba(0,0,0,0.2)] border-4 border-black flex flex-col md:flex-row overflow-hidden relative">
                    {/* Left: Avatar & Socials */}
                    <div className="w-full md:w-1/4 bg-[#222] p-6 flex flex-col items-center justify-center border-b-4 md:border-b-0 md:border-r-4 border-black border-dashed relative">
-                       {/* MONOLITH AVATAR */}
-                       <div className="w-20 h-36 bg-black shadow-[4px_4px_10px_0px_rgba(0,0,0,0.5)] mb-6 transform hover:scale-105 transition-transform duration-500 cursor-pointer flex items-center justify-center group relative overflow-hidden">
-                           <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-white/10 opacity-30"></div>
-                           <div className="opacity-0 group-hover:opacity-100 text-white text-[9px] font-mono">MONOLITH</div>
+                       {/* MONOLITH AVATAR OR CUSTOM IMAGE */}
+                       <input type="file" ref={fileInputRef} onChange={handleAvatarUpload} className="hidden" accept="image/*" />
+                       <div 
+                         onClick={() => fileInputRef.current?.click()}
+                         className="w-24 h-36 bg-black shadow-[4px_4px_10px_0px_rgba(0,0,0,0.5)] mb-6 transform hover:scale-105 transition-transform duration-500 cursor-pointer flex items-center justify-center group relative overflow-hidden border-2 border-transparent hover:border-[#F5C71A]"
+                       >
+                           {profile.avatar ? (
+                               <img src={profile.avatar} className="w-full h-full object-cover" />
+                           ) : (
+                               <>
+                                <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-white/10 opacity-30"></div>
+                                <div className="opacity-0 group-hover:opacity-100 text-white text-[9px] font-mono absolute bottom-2">UPLOAD</div>
+                                <div className="text-[#F5C71A] text-[9px] font-mono">MONOLITH</div>
+                               </>
+                           )}
                        </div>
 
                        {isEditingProfile ? (
@@ -748,15 +810,24 @@ function App() {
                            const badge = listBadges.length > 0 ? listBadges[listBadges.length - 1] : null;
                            const progress = getListProgress(list);
                            return (
-                             <div key={list.id} onClick={() => setSelectedList(list)} className="border-4 border-black p-4 bg-[#F5C71A] text-black cursor-pointer hover:bg-black hover:text-[#F5C71A] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative transition-all">
+                             <div key={list.id} onClick={() => setSelectedList(list)} className="border-4 border-black p-4 bg-[#F5C71A] text-black cursor-pointer hover:bg-black hover:text-[#F5C71A] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative transition-all group">
                                 <h3 className="font-black uppercase">{list.title}</h3>
                                 {badge && (
                                    <div className="absolute top-2 right-2 bg-black text-yellow-400 border border-yellow-400 px-2 py-0.5 text-[10px] font-bold uppercase">
                                      {badge.title}
                                    </div>
                                 )}
-                                <div className="mt-2 text-xs font-mono font-bold border-t border-current pt-1 flex justify-between">
+                                <div className="mt-2 text-xs font-mono font-bold border-t border-current pt-1 flex justify-between items-center">
                                     <span>{progress}% Complete</span>
+                                    {list.isCustom && (
+                                        <button 
+                                            onClick={(e) => handleDeleteList(e, list.id)} 
+                                            className="text-red-600 hover:text-white hover:bg-red-600 p-1 rounded"
+                                            title="Delete Journey"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    )}
                                 </div>
                              </div>
                            );
@@ -806,10 +877,19 @@ function App() {
                                    setIsEditorMode(true);
                                    setAiSuggestions([]);
                                 }} 
-                                className="relative flex flex-col text-left cursor-pointer border-2 border-dashed border-black p-4 bg-[#F5C71A] hover:bg-black hover:text-yellow-400"
+                                className="relative flex flex-col text-left cursor-pointer border-2 border-dashed border-black p-4 bg-[#F5C71A] hover:bg-black hover:text-yellow-400 group"
                              >
                                 <div className="absolute top-0 right-0 bg-black text-white px-2 text-[10px] font-bold">DRAFT</div>
-                                <h3 className="text-lg font-black uppercase">{list.title}</h3>
+                                <div className="flex justify-between items-start">
+                                    <h3 className="text-lg font-black uppercase">{list.title}</h3>
+                                    <button 
+                                        onClick={(e) => handleDeleteList(e, list.id)} 
+                                        className="text-red-600 hover:text-white hover:bg-red-600 p-1 rounded z-10"
+                                        title="Delete Draft"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
                              </div>
                           ))}
                       </div>
@@ -1036,6 +1116,19 @@ function App() {
                 </div>
               </div>
             ))}
+
+            {/* ADD TIER BUTTON (EDITOR MODE) */}
+            {isEditorMode && currentTiers.length < 30 && (
+                <div className="mt-8">
+                     <div className="h-12 w-1 bg-black mx-auto" />
+                     <button 
+                         onClick={() => handleAddTier(viewMode === 'series')} 
+                         className="bg-black text-[#F5C71A] border-4 border-[#F5C71A] px-12 py-4 text-2xl font-black uppercase tracking-widest hover:scale-105 transition-transform"
+                     >
+                         + Add Tier
+                     </button>
+                </div>
+            )}
           </div>
         )}
       </main>
