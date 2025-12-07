@@ -1,3 +1,6 @@
+import { createFilm } from '../constants';
+import { Film } from '../types';
+
 const API_KEY = "6e24d9cca96b2ac08abfc12a9714a52c";
 const BASE_URL = "https://api.themoviedb.org/3";
 const IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w500";
@@ -128,6 +131,40 @@ export const getDirectorPicks = async (query: string): Promise<any[]> => {
 
     } catch (e) {
         console.error("TMDB Director Picks Error:", e);
+        return [];
+    }
+};
+
+export const searchMovies = async (query: string): Promise<Film[]> => {
+    if (!API_KEY) return [];
+    try {
+        const searchUrl = `${BASE_URL}/search/movie?api_key=${API_KEY}&query=${encodeURIComponent(query)}`;
+        const response = await fetch(searchUrl);
+        const data = await response.json();
+
+        if (!data.results) return [];
+
+        return data.results.map((m: any) => {
+            const releaseDate = m.release_date ? m.release_date.split('-')[0] : "";
+            const year = releaseDate ? parseInt(releaseDate) : 0;
+            const poster = m.poster_path ? `${IMAGE_BASE_URL}${m.poster_path}` : undefined;
+            
+            // Create base film object using the helper
+            // We use "Unknown" for director initially as search results don't provide crew.
+            const film = createFilm(m.title, year, "Unknown", poster);
+            
+            // Enrich with details available in search result
+            film.plot = m.overview;
+            film.imdbScore = m.vote_average;
+            
+            // Append TMDB ID to internal slug to ensure uniqueness in search lists
+            film.id = `${film.id}-${m.id}`;
+            
+            return film;
+        });
+
+    } catch (e) {
+        console.error("TMDB Search Error:", e);
         return [];
     }
 };
