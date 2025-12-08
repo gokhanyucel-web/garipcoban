@@ -30,13 +30,13 @@ const FilmCard: React.FC<FilmCardProps> = ({ film, log, onClick, isEditable, onR
 
   return (
     <div 
-      className={`relative group ${isEditable ? 'opacity-100' : ''}`}
+      className={`relative group ${isEditable ? 'opacity-100' : ''} hover:z-50`}
       draggable={isEditable}
       onDragStart={(e) => { if(onDragStart) onDragStart(e, film); }}
     >
       {isEditable && (
-         <div className="absolute -top-3 right-0 z-50 flex gap-1">
-            <button onClick={(e) => { e.stopPropagation(); onRemove && onRemove(film.id); }} className="bg-red-600 text-white w-5 h-5 flex items-center justify-center text-xs font-bold border border-black hover:scale-110 transition-transform">✕</button>
+         <div className="absolute -top-3 right-0 z-20 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <button onClick={(e) => { e.stopPropagation(); onRemove && onRemove(film.id); }} className="bg-red-600 text-white w-5 h-5 flex items-center justify-center text-xs font-bold border border-black hover:scale-110 transition-transform cursor-pointer">✕</button>
          </div>
       )}
 
@@ -55,7 +55,7 @@ const FilmCard: React.FC<FilmCardProps> = ({ film, log, onClick, isEditable, onR
             <img 
                 src={displayPoster} 
                 alt={film.title}
-                className={`w-full h-full object-cover transition-all duration-500 ${isWatched ? 'grayscale opacity-60' : 'grayscale opacity-80 group-hover:grayscale-0 group-hover:opacity-100'}`}
+                className={`w-full h-full object-cover transition-all duration-500 ${isWatched ? 'grayscale-0 opacity-100' : 'grayscale opacity-80 group-hover:grayscale-0 group-hover:opacity-100'}`}
                 loading="lazy"
             />
         </div>

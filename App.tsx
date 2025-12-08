@@ -655,7 +655,7 @@ function App() {
       <div className="min-h-screen w-full bg-[#F5C71A] text-black font-sans selection:bg-black selection:text-[#F5C71A] flex flex-col transition-colors duration-300">
         
         {isSearchOpen && (
-           <div className="fixed inset-0 z-50 bg-[#F5C71A]/95 backdrop-blur-md flex flex-col p-8 animate-fadeIn">
+           <div className="fixed inset-0 z-[9999] bg-[#F5C71A]/95 backdrop-blur-md flex flex-col p-8 animate-fadeIn">
               <div className="w-full max-w-4xl mx-auto flex flex-col gap-8 h-full">
                   <div className="flex justify-between items-center border-b-4 border-black pb-4">
                      <h2 className="text-4xl font-black uppercase">Search Database</h2>
@@ -674,9 +674,16 @@ function App() {
                        <div className="grid grid-cols-1 gap-4">
                           {searchResults.map(film => (
                              <div key={film.id} onClick={() => { setSelectedFilm(film); setIsSearchOpen(false); }} className="p-4 border-2 border-black hover:bg-black hover:text-[#F5C71A] cursor-pointer flex justify-between items-center group">
-                                <div>
-                                   <h3 className="text-xl font-black uppercase">{film.title}</h3>
-                                   <p className="font-mono text-sm opacity-60 group-hover:opacity-100">{film.year}</p>
+                                <div className="flex items-center gap-4">
+                                   {film.posterUrl ? (
+                                      <img src={film.posterUrl} alt={film.title} className="w-12 h-16 object-cover border border-black" />
+                                   ) : (
+                                      <div className="w-12 h-16 bg-gray-800 border border-black"></div>
+                                   )}
+                                   <div>
+                                      <h3 className="text-xl font-black uppercase">{film.title}</h3>
+                                      <p className="font-mono text-sm opacity-60 group-hover:opacity-100">{film.year}</p>
+                                   </div>
                                 </div>
                                 <span className="font-bold text-sm">→</span>
                              </div>
@@ -689,7 +696,7 @@ function App() {
         )}
 
         {isAICreatorOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 p-4">
                 <div className="w-full max-w-2xl bg-[#F5C71A] border-4 border-black p-8 shadow-[12px_12px_0px_0px_#fff]">
                     <h2 className="text-3xl font-black uppercase mb-4">Create New Journey</h2>
                     <p className="font-mono mb-4 text-sm">Enter a director, genre, or theme. Virgil will fetch director picks from TMDB or consult the AI archives.</p>
@@ -1012,7 +1019,7 @@ function App() {
       )}
 
       {showTierSearchModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 p-4">
            <div className="w-full max-w-2xl bg-[#F5C71A] border-4 border-black p-6 shadow-[8px_8px_0px_0px_#fff]">
               <h3 className="text-xl font-black uppercase mb-4">Add to Tier</h3>
               <input autoFocus type="text" placeholder="Search database or type custom..." className="w-full p-4 text-xl font-mono border-2 border-black bg-white mb-4 uppercase" value={tierSearchQuery} onChange={(e) => setTierSearchQuery(e.target.value)} />
@@ -1024,9 +1031,16 @@ function App() {
                  {tierSearchQuery.length > 2 ? (
                      tierSearchResults.map(film => (
                         <button key={film.id} onClick={() => handleAddFilmToTier(film)} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b flex justify-between items-center group">
-                            <div>
-                                <span className="font-bold uppercase">{film.title}</span>
-                                <span className="text-xs ml-2 opacity-60 font-mono">{film.year}</span>
+                            <div className="flex items-center gap-4">
+                                {film.posterUrl ? (
+                                    <img src={film.posterUrl} alt={film.title} className="w-12 h-16 object-cover border border-black" />
+                                ) : (
+                                    <div className="w-12 h-16 bg-gray-800 border border-black"></div>
+                                )}
+                                <div>
+                                    <span className="font-bold uppercase">{film.title}</span>
+                                    <span className="text-xs ml-2 opacity-60 font-mono">{film.year}</span>
+                                </div>
                             </div>
                             <span className="text-xs opacity-0 group-hover:opacity-100 uppercase font-black">+ ADD</span>
                         </button>
