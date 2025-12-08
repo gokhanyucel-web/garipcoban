@@ -9,7 +9,8 @@ import { getAIListSuggestions } from './services/geminiService';
 import { getDirectorPicks, searchMovies } from './services/tmdb';
 import { Search, Twitter, Instagram, Mail, ShieldAlert, Edit2, Save, Trash2, Camera, LogOut, User } from 'lucide-react';
 
-// --- AUTH COMPONENT (Defined outside App to fix focus loss) ---
+// --- COMPONENTS DEFINED OUTSIDE APP (Prevents Focus Loss) ---
+
 const AuthScreen = ({ onAuth }: { onAuth: (mode: 'signin' | 'signup', data: any) => Promise<void> }) => {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [formData, setFormData] = useState({
@@ -124,11 +125,119 @@ const AuthScreen = ({ onAuth }: { onAuth: (mode: 'signin' | 'signup', data: any)
   );
 };
 
+interface MainLayoutProps {
+  children: React.ReactNode;
+  activeTab: string;
+  session: any;
+  isAdmin: boolean;
+  onLogout: () => void;
+  onOpenSearch: () => void;
+  onToggleAdmin: () => void;
+}
+
+const MainLayout: React.FC<MainLayoutProps> = ({ children, activeTab, session, isAdmin, onLogout, onOpenSearch, onToggleAdmin }) => (
+  <div className="min-h-screen w-full bg-[#F5C71A] text-black font-sans selection:bg-black selection:text-[#F5C71A] flex flex-col transition-colors duration-300">
+    <header className="pt-12 pb-8 text-center px-4 relative">
+         <div className="absolute top-8 right-8 flex gap-4">
+             {isAdmin && <span className="bg-red-600 text-white px-2 py-1 text-xs font-black uppercase border border-black animate-pulse">ADMIN MODE ACTIVE</span>}
+             {!session ? (
+                 <Link 
+                   to="/auth" 
+                   className="px-4 py-2 border-2 border-black font-black uppercase hover:bg-black hover:text-[#F5C71A] transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-sm flex items-center gap-2"
+                 >
+                   <User size={16} /> Sign In / Join
+                 </Link>
+             ) : (
+                 <>
+                   <button onClick={onLogout} title="Logout" className="w-12 h-12 flex items-center justify-center border-4 border-black rounded-full hover:bg-black hover:text-[#F5C71A] transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"><LogOut size={20} /></button>
+                   <button onClick={onOpenSearch} className="w-12 h-12 flex items-center justify-center border-4 border-black rounded-full hover:bg-black hover:text-[#F5C71A] transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                      <Search size={24} strokeWidth={3} />
+                   </button>
+                 </>
+             )}
+         </div>
+
+        <h1 className="text-7xl md:text-9xl font-black tracking-tighter mb-2 uppercase leading-none cursor-pointer" onClick={() => window.location.reload()}>VIRGIL</h1>
+        <p className="text-xl md:text-3xl font-bold font-mono tracking-widest uppercase opacity-80 mb-8">Curated Cinematic Journeys</p>
+        
+        <div className="flex justify-center items-center gap-0 border-b-4 border-black w-full max-w-2xl mx-auto">
+          <Link to="/" className={`flex-1 py-4 text-xl md:text-2xl font-black uppercase tracking-widest text-center transition-all ${activeTab === 'archive' ? 'bg-black text-[#F5C71A]' : 'bg-transparent text-black hover:bg-black/10'}`}>Archive</Link>
+          <div className="w-1 h-full bg-black"></div>
+          <Link to="/vault" className={`flex-1 py-4 text-xl md:text-2xl font-black uppercase tracking-widest text-center transition-all ${activeTab === 'vault' ? 'bg-black text-[#F5C71A]' : 'bg-transparent text-black hover:bg-black/10'}`}>My Vault</Link>
+        </div>
+    </header>
+    <main className="max-w-7xl mx-auto px-6 grid gap-16 mt-12 flex-grow w-full">
+      {children}
+    </main>
+    <footer className="mt-32 bg-black text-[#F5C71A] border-t-8 border-[#F5C71A] py-16 px-6 relative">
+          <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-end gap-12">
+              <div className="space-y-6">
+                  <h2 className="text-6xl md:text-8xl font-black uppercase leading-none tracking-tighter opacity-20 hover:opacity-100 transition-opacity duration-500 cursor-default">
+                      CONSUME<br/>MEANINGFULLY.
+                  </h2>
+                  <div className="flex flex-col gap-2">
+                      <p className="font-mono text-xs opacity-60 max-w-sm">
+                          Virgil is a curated discovery platform that transforms recommendations into guided learning experiences.
+                      </p>
+                  </div>
+              </div>
+              <div className="flex flex-col items-end gap-8 text-right">
+                  <div className="flex gap-6 text-sm font-bold uppercase tracking-widest">
+                      <span className="cursor-pointer hover:text-white hover:underline decoration-2 underline-offset-4 opacity-50">Privacy</span>
+                      <button onClick={onToggleAdmin} className={`cursor-pointer hover:text-white hover:underline decoration-2 underline-offset-4 uppercase ${isAdmin ? 'text-red-500 font-black' : 'opacity-50'}`}>{isAdmin ? 'Admin Active' : 'Admin'}</button>
+                      <a href="mailto:hello@virgil.app" className="cursor-pointer hover:text-white hover:underline decoration-2 underline-offset-4">Contact</a>
+                  </div>
+                  <div className="flex gap-4">
+                      <a href="#" className="w-10 h-10 border-2 border-[#F5C71A] flex items-center justify-center hover:bg-[#F5C71A] hover:text-black transition-colors"><Twitter /></a>
+                      <a href="#" className="w-10 h-10 border-2 border-[#F5C71A] flex items-center justify-center hover:bg-[#F5C71A] hover:text-black transition-colors"><Instagram /></a>
+                      <a href="#" className="w-10 h-10 border-2 border-[#F5C71A] flex items-center justify-center hover:bg-[#F5C71A] hover:text-black transition-colors"><Mail /></a>
+                  </div>
+                  <p className="text-[10px] font-mono opacity-40">© 2025 VIRGIL SYSTEMS. ALL RIGHTS RESERVED.</p>
+              </div>
+          </div>
+    </footer>
+  </div>
+);
+
+const TimelineView = ({ tiers, userDb, onSelectFilm, onUpdateLog }: { tiers: Tier[], userDb: UserDatabase, onSelectFilm: (f: Film) => void, onUpdateLog: (id: string, updates: any) => void }) => {
+   let allFilms: Film[] = [];
+   tiers.forEach(t => allFilms.push(...t.films));
+   allFilms.sort((a,b) => a.year - b.year);
+
+   return (
+      <div className="relative w-full max-w-4xl mx-auto py-12 px-4">
+           <div className="absolute left-6 md:left-1/2 top-0 bottom-0 w-1 md:w-2 bg-kubrick-black md:-translate-x-1/2"></div>
+           <div className="flex flex-col gap-8 md:gap-12">
+              {allFilms.map((film, index) => {
+                  const isLeft = index % 2 === 0;
+                  return (
+                      <div key={film.id} className={`flex items-center w-full ${isLeft ? 'md:flex-row-reverse' : 'md:flex-row'}`}>
+                           <div className="hidden md:block w-1/2"></div>
+                           <div className="absolute left-6 md:left-1/2 w-4 h-4 md:w-6 md:h-6 bg-kubrick-yellow border-4 border-kubrick-black rounded-full z-10 md:-translate-x-1/2 translate-x-[-0.35rem] md:translate-x-[-0.6rem]"></div>
+                           <div className={`w-full md:w-1/2 pl-12 md:pl-0 ${isLeft ? 'md:pr-12 md:text-right text-left' : 'md:pl-12 md:text-left text-left'}`}>
+                               <div className={`inline-block`}>
+                                   <div className={`mb-2 font-black text-2xl md:text-3xl opacity-50 font-mono`}>{film.year}</div>
+                                   <FilmCard 
+                                      film={film} 
+                                      log={userDb[film.id]} 
+                                      onClick={() => onSelectFilm(film)} 
+                                      isEditable={false} 
+                                      onUpdateLog={onUpdateLog}
+                                   />
+                               </div>
+                           </div>
+                      </div>
+                  )
+              })}
+           </div>
+      </div>
+   );
+};
+
 function App() {
   // --- ROUTING & AUTH STATE ---
   const navigate = useNavigate();
   const [session, setSession] = useState<any>(null);
-  const [authLoading, setAuthLoading] = useState(true);
 
   // --- APP STATE ---
   const [selectedList, setSelectedList] = useState<CuratedList | null>(null);
@@ -172,62 +281,72 @@ function App() {
 
   // --- INITIALIZATION & DATA SYNC ---
 
-  // 1. Auth & Data Fetching
+  // 1. Session & Real Data Fetching (Persistence)
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      setAuthLoading(false);
-      if (session) fetchUserLogs(session.user.id);
+      if (session) fetchAllUserData(session.user.id);
     });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) fetchUserLogs(session.user.id);
-      else setUserDb({}); // Clear local state on logout
+      if (session) fetchAllUserData(session.user.id);
+      else {
+        setUserDb({});
+        setVaultIds([]);
+        // Optional: Reset profile to default if not logged in
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchUserLogs = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('user_logs')
-      .select('film_id, watched, rating, notes')
-      .eq('user_id', userId);
-
-    if (error) {
-      console.error('Error fetching logs:', error);
-      return;
-    }
-
-    if (data) {
+  const fetchAllUserData = async (userId: string) => {
+    // A. Fetch User Logs
+    const { data: logs } = await supabase.from('user_logs').select('film_id, watched, rating, notes').eq('user_id', userId);
+    if (logs) {
       const db: UserDatabase = {};
-      data.forEach((row: any) => {
+      logs.forEach((row: any) => {
         db[row.film_id] = { watched: row.watched, rating: row.rating, notes: row.notes };
       });
       setUserDb(db);
     }
+
+    // B. Fetch Vault
+    const { data: vault } = await supabase.from('vault').select('list_id').eq('user_id', userId);
+    if (vault) {
+      setVaultIds(vault.map((row: any) => row.list_id));
+    }
+
+    // C. Fetch Profile
+    const { data: profileData } = await supabase.from('profiles').select('username, motto, avatar_url').eq('id', userId).single();
+    if (profileData) {
+      setProfile({
+        name: profileData.username || "Initiate",
+        motto: profileData.motto || "The Unwritten",
+        avatar: profileData.avatar_url || undefined
+      });
+    }
   };
 
-  // 2. Load Local Storage (Non-DB items for now)
+  // 2. Load Local Storage (Fallback / Settings)
   useEffect(() => {
-    const savedVault = localStorage.getItem('virgil_vault_ids');
-    if (savedVault) setVaultIds(JSON.parse(savedVault));
     const savedCustom = localStorage.getItem('virgil_custom_lists');
     if (savedCustom) setCustomLists(JSON.parse(savedCustom));
     const savedOverrides = localStorage.getItem('virgil_master_overrides');
     if (savedOverrides) setMasterOverrides(JSON.parse(savedOverrides));
-    const savedProfile = localStorage.getItem('virgil_user_profile');
-    if (savedProfile) setProfile(JSON.parse(savedProfile));
-  }, []);
+    
+    // Fallback profile if not logged in
+    if (!session) {
+      const savedProfile = localStorage.getItem('virgil_user_profile');
+      if (savedProfile) setProfile(JSON.parse(savedProfile));
+    }
+  }, [session]);
 
   // 3. Save Local Storage
-  useEffect(() => { localStorage.setItem('virgil_vault_ids', JSON.stringify(vaultIds)); }, [vaultIds]);
   useEffect(() => { localStorage.setItem('virgil_custom_lists', JSON.stringify(customLists)); }, [customLists]);
   useEffect(() => { localStorage.setItem('virgil_master_overrides', JSON.stringify(masterOverrides)); }, [masterOverrides]);
-  useEffect(() => { localStorage.setItem('virgil_user_profile', JSON.stringify(profile)); }, [profile]);
+  useEffect(() => { if(!session) localStorage.setItem('virgil_user_profile', JSON.stringify(profile)); }, [profile, session]);
 
   // Live Search
   useEffect(() => {
@@ -290,7 +409,6 @@ function App() {
 
     // 2. Supabase Sync
     if (session) {
-      // Calculate final state for db
       const currentLog = userDb[filmId] || { watched: false, rating: 0 };
       const newLog = { ...currentLog, ...updates };
       if (updates.rating && updates.rating > 0) newLog.watched = true;
@@ -309,12 +427,29 @@ function App() {
     }
   };
 
-  const handleToggleVault = (e: React.MouseEvent, listId: string) => {
+  const handleToggleVault = async (e: React.MouseEvent, listId: string) => {
     e.stopPropagation();
+    let newVaultIds = [];
     if (vaultIds.includes(listId)) {
-      setVaultIds(prev => prev.filter(id => id !== listId));
+      newVaultIds = vaultIds.filter(id => id !== listId);
+      if (session) await supabase.from('vault').delete().match({ user_id: session.user.id, list_id: listId });
     } else {
-      setVaultIds(prev => [...prev, listId]);
+      newVaultIds = [...vaultIds, listId];
+      if (session) await supabase.from('vault').insert({ user_id: session.user.id, list_id: listId });
+    }
+    setVaultIds(newVaultIds);
+  };
+
+  const saveProfile = async () => {
+    setIsEditingProfile(false);
+    if (session) {
+       const { error } = await supabase.from('profiles').upsert({
+         id: session.user.id,
+         username: profile.name,
+         motto: profile.motto,
+         avatar_url: profile.avatar || ""
+       });
+       if (error) console.error("Error saving profile:", error);
     }
   };
 
@@ -360,7 +495,7 @@ function App() {
       status: 'draft'
     };
     setCustomLists(prev => [...prev, forkedList]);
-    setVaultIds(prev => [...prev, newId]);
+    setVaultIds(prev => [...prev, newId]); // Note: Custom lists not synced to vault table yet unless saved separately, keeping local for now as per instructions
     setSelectedList(forkedList);
     setEditingList(forkedList);
     setIsEditorMode(true);
@@ -558,7 +693,6 @@ function App() {
       return allFilms.sort((a,b) => b.ves - a.ves).slice(0, 4);
   };
 
-  // ... (Sherpa Identity Calculation)
   const calculateSherpaIdentity = () => {
     const watchedEntries = Object.entries(userDb).filter(([_, log]) => (log as UserFilmLog).watched) as [string, UserFilmLog][];
     const totalWatched = watchedEntries.length;
@@ -600,7 +734,7 @@ function App() {
         else if (topGenre === 'ARTHOUSE' || topGenre === 'CLASSIC') noun = (totalWatched % 2 === 0) ? "Poet" : "Observer";
         else if (topGenre === 'NOIR') noun = "Investigator";
     }
-    if (totalWatched === 0) { adjective = "Blank"; noun = "Canvas"; }
+    if (totalWatched === 0) { adjective = "The"; noun = "Unwritten"; }
     const totalHours = Math.floor(totalRuntime / 60);
     return { totalWatched, totalLists: vaultIds.length, totalCreated: customLists.length, totalCompleted, totalHours, fullTitle: `${adjective} ${noun}` };
   };
@@ -635,32 +769,6 @@ function App() {
       });
   };
 
-  const TimelineView = ({ tiers }: { tiers: Tier[] }) => {
-     let allFilms: Film[] = []; tiers.forEach(t => allFilms.push(...t.films)); allFilms.sort((a,b) => a.year - b.year);
-     return (
-        <div className="relative w-full max-w-4xl mx-auto py-12 px-4">
-             <div className="absolute left-6 md:left-1/2 top-0 bottom-0 w-1 md:w-2 bg-kubrick-black md:-translate-x-1/2"></div>
-             <div className="flex flex-col gap-8 md:gap-12">
-                {allFilms.map((film, index) => {
-                    const isLeft = index % 2 === 0;
-                    return (
-                        <div key={film.id} className={`flex items-center w-full ${isLeft ? 'md:flex-row-reverse' : 'md:flex-row'}`}>
-                             <div className="hidden md:block w-1/2"></div>
-                             <div className="absolute left-6 md:left-1/2 w-4 h-4 md:w-6 md:h-6 bg-kubrick-yellow border-4 border-kubrick-black rounded-full z-10 md:-translate-x-1/2 translate-x-[-0.35rem] md:translate-x-[-0.6rem]"></div>
-                             <div className={`w-full md:w-1/2 pl-12 md:pl-0 ${isLeft ? 'md:pr-12 md:text-right text-left' : 'md:pl-12 md:text-left text-left'}`}>
-                                 <div className={`inline-block`}>
-                                     <div className={`mb-2 font-black text-2xl md:text-3xl opacity-50 font-mono`}>{film.year}</div>
-                                     <FilmCard film={film} log={userDb[film.id]} onClick={() => setSelectedFilm(film)} isEditable={false} onUpdateLog={handleUpdateLog} />
-                                 </div>
-                             </div>
-                        </div>
-                    )
-                })}
-             </div>
-        </div>
-     );
-  };
-
   const currentList = isEditorMode ? editingList : selectedList;
   const currentTiersBase = currentList ? (viewMode === 'series' && currentList.seriesTiers ? currentList.seriesTiers : currentList.tiers) : [];
   const currentTiers = getSortedTiers(currentTiersBase);
@@ -668,73 +776,8 @@ function App() {
   const canRemix = currentList ? !currentList.isCustom : false;
   const toggleAdmin = () => setIsAdmin(!isAdmin);
 
-  // --- SUB-COMPONENTS (Layouts) ---
+  // --- RENDER ---
 
-  const MainLayout = ({ children, activeTab }: { children: React.ReactNode, activeTab: string }) => (
-    <div className="min-h-screen w-full bg-[#F5C71A] text-black font-sans selection:bg-black selection:text-[#F5C71A] flex flex-col transition-colors duration-300">
-      <header className="pt-12 pb-8 text-center px-4 relative">
-           <div className="absolute top-8 right-8 flex gap-4">
-               {isAdmin && <span className="bg-red-600 text-white px-2 py-1 text-xs font-black uppercase border border-black animate-pulse">ADMIN MODE ACTIVE</span>}
-               {!session ? (
-                   <button 
-                     onClick={() => navigate('/auth')} 
-                     className="px-4 py-2 border-2 border-black font-black uppercase hover:bg-black hover:text-[#F5C71A] transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-sm flex items-center gap-2"
-                   >
-                     <User size={16} /> Sign In / Join
-                   </button>
-               ) : (
-                   <>
-                     <button onClick={handleLogout} title="Logout" className="w-12 h-12 flex items-center justify-center border-4 border-black rounded-full hover:bg-black hover:text-[#F5C71A] transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"><LogOut size={20} /></button>
-                     <button onClick={() => setIsSearchOpen(true)} className="w-12 h-12 flex items-center justify-center border-4 border-black rounded-full hover:bg-black hover:text-[#F5C71A] transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                        <Search size={24} strokeWidth={3} />
-                     </button>
-                   </>
-               )}
-           </div>
-
-          <h1 className="text-7xl md:text-9xl font-black tracking-tighter mb-2 uppercase leading-none cursor-pointer" onClick={() => window.location.reload()}>VIRGIL</h1>
-          <p className="text-xl md:text-3xl font-bold font-mono tracking-widest uppercase opacity-80 mb-8">Curated Cinematic Journeys</p>
-          
-          <div className="flex justify-center items-center gap-0 border-b-4 border-black w-full max-w-2xl mx-auto">
-            <Link to="/" className={`flex-1 py-4 text-xl md:text-2xl font-black uppercase tracking-widest text-center transition-all ${activeTab === 'archive' ? 'bg-black text-[#F5C71A]' : 'bg-transparent text-black hover:bg-black/10'}`}>Archive</Link>
-            <div className="w-1 h-full bg-black"></div>
-            <Link to="/vault" className={`flex-1 py-4 text-xl md:text-2xl font-black uppercase tracking-widest text-center transition-all ${activeTab === 'vault' ? 'bg-black text-[#F5C71A]' : 'bg-transparent text-black hover:bg-black/10'}`}>My Vault</Link>
-          </div>
-      </header>
-      <main className="max-w-7xl mx-auto px-6 grid gap-16 mt-12 flex-grow w-full">
-        {children}
-      </main>
-      <footer className="mt-32 bg-black text-[#F5C71A] border-t-8 border-[#F5C71A] py-16 px-6 relative">
-            <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-end gap-12">
-                <div className="space-y-6">
-                    <h2 className="text-6xl md:text-8xl font-black uppercase leading-none tracking-tighter opacity-20 hover:opacity-100 transition-opacity duration-500 cursor-default">
-                        CONSUME<br/>MEANINGFULLY.
-                    </h2>
-                    <div className="flex flex-col gap-2">
-                        <p className="font-mono text-xs opacity-60 max-w-sm">
-                            Virgil is a curated discovery platform that transforms recommendations into guided learning experiences.
-                        </p>
-                    </div>
-                </div>
-                <div className="flex flex-col items-end gap-8 text-right">
-                    <div className="flex gap-6 text-sm font-bold uppercase tracking-widest">
-                        <span className="cursor-pointer hover:text-white hover:underline decoration-2 underline-offset-4 opacity-50">Privacy</span>
-                        <button onClick={toggleAdmin} className={`cursor-pointer hover:text-white hover:underline decoration-2 underline-offset-4 uppercase ${isAdmin ? 'text-red-500 font-black' : 'opacity-50'}`}>{isAdmin ? 'Admin Active' : 'Admin'}</button>
-                        <a href="mailto:hello@virgil.app" className="cursor-pointer hover:text-white hover:underline decoration-2 underline-offset-4">Contact</a>
-                    </div>
-                    <div className="flex gap-4">
-                        <a href="#" className="w-10 h-10 border-2 border-[#F5C71A] flex items-center justify-center hover:bg-[#F5C71A] hover:text-black transition-colors"><Twitter /></a>
-                        <a href="#" className="w-10 h-10 border-2 border-[#F5C71A] flex items-center justify-center hover:bg-[#F5C71A] hover:text-black transition-colors"><Instagram /></a>
-                        <a href="#" className="w-10 h-10 border-2 border-[#F5C71A] flex items-center justify-center hover:bg-[#F5C71A] hover:text-black transition-colors"><Mail /></a>
-                    </div>
-                    <p className="text-[10px] font-mono opacity-40">© 2025 VIRGIL SYSTEMS. ALL RIGHTS RESERVED.</p>
-                </div>
-            </div>
-      </footer>
-    </div>
-  );
-
-  // --- EDITOR / LIST VIEW ---
   if (currentList) {
     return (
       <div className="min-h-screen w-full bg-[#F5C71A] text-black pb-20 overflow-x-hidden">
@@ -827,7 +870,7 @@ function App() {
             </div>
         )}
         <main className="max-w-7xl mx-auto px-4 relative pb-32">
-          {sortOption === 'chronological' ? ( <TimelineView tiers={currentTiersBase} /> ) : (
+          {sortOption === 'chronological' ? ( <TimelineView tiers={currentTiersBase} userDb={userDb} onSelectFilm={(f) => isEditorMode ? setIsEditContextMode(f.id) : setSelectedFilm(f)} onUpdateLog={handleUpdateLog} /> ) : (
             <div className="flex flex-col items-center">
               {currentTiers.map((tier, tierIndex) => (
                 <div key={tierIndex} className="relative flex flex-col items-center animate-fadeIn w-full" onDragOver={(e) => e.preventDefault()} onDrop={(e) => handleDrop(e, tierIndex)}>
@@ -910,7 +953,7 @@ function App() {
         <Route path="/auth" element={session ? <Navigate to="/vault" /> : <AuthScreen onAuth={handleAuth} />} />
         
         <Route path="/" element={
-          <MainLayout activeTab="archive">
+          <MainLayout activeTab="archive" session={session} isAdmin={isAdmin} onLogout={handleLogout} onOpenSearch={() => setIsSearchOpen(true)} onToggleAdmin={toggleAdmin}>
              {ARCHIVE_CATEGORIES.map((category) => {
              const isExpanded = expandedCategories[category.title];
              const visibleLists = isExpanded ? category.lists : category.lists.slice(0, 8);
@@ -942,7 +985,7 @@ function App() {
 
         <Route path="/vault" element={
           !session ? <Navigate to="/auth" /> :
-          <MainLayout activeTab="vault">
+          <MainLayout activeTab="vault" session={session} isAdmin={isAdmin} onLogout={handleLogout} onOpenSearch={() => setIsSearchOpen(true)} onToggleAdmin={toggleAdmin}>
              <div className="space-y-16 animate-fadeIn">
                 {/* IDENTITY CARD */}
                 <div className="w-full max-w-5xl mx-auto bg-black text-[#F5C71A] shadow-[12px_12px_0px_0px_rgba(0,0,0,0.2)] border-4 border-black flex flex-col md:flex-row overflow-hidden relative">
@@ -955,7 +998,7 @@ function App() {
                            <div className="flex flex-col gap-2 w-full">
                                <input className="w-full bg-black border border-[#F5C71A] text-[#F5C71A] p-2 text-center font-black uppercase text-lg" value={profile.name} onChange={(e) => setProfile({...profile, name: e.target.value})} />
                                <textarea className="w-full bg-black border border-[#F5C71A] text-[#F5C71A] p-2 text-center font-mono text-xs resize-none h-20 focus:outline-none" value={profile.motto} onChange={(e) => setProfile({...profile, motto: e.target.value})} />
-                               <button onClick={() => setIsEditingProfile(false)} className="bg-[#F5C71A] text-black text-xs font-bold py-1 flex items-center justify-center gap-1"><Save size={12}/> SAVE</button>
+                               <button onClick={saveProfile} className="bg-[#F5C71A] text-black text-xs font-bold py-1 flex items-center justify-center gap-1"><Save size={12}/> SAVE</button>
                            </div>
                        ) : (
                            <><h3 className="font-black text-xl uppercase tracking-wider text-center">{profile.name}</h3><p className="text-[10px] font-mono opacity-60 uppercase tracking-widest mb-4 text-center">"{profile.motto}"</p><button onClick={() => setIsEditingProfile(true)} className="text-[10px] underline opacity-50 hover:opacity-100 mb-4">Edit Identity</button></>
