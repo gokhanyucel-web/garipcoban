@@ -238,6 +238,7 @@ const TimelineView = ({ tiers, userDb, onSelectFilm, onUpdateLog }: { tiers: Tie
 
 function App() {
   // --- STATE ---
+  const [isLoading, setIsLoading] = useState(true); // Blocking load state
   const [session, setSession] = useState<any>(null);
   const [view, setView] = useState<'home' | 'vault' | 'auth'>('home'); // SPA State
   
@@ -279,7 +280,7 @@ function App() {
 
   const fetchUserData = async (userId: string) => {
     try {
-        // 1. Logs - The Critical Fix: Ensure we select relevant columns and MAP correctly
+        // 1. Logs - Ensure we select relevant columns and MAP correctly
         const { data: logs, error: logsError } = await supabase
             .from('user_logs')
             .select('film_id, watched, rating, notes')
@@ -331,27 +332,54 @@ function App() {
   };
 
   useEffect(() => {
-    // Initial Session Check
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) fetchUserData(session.user.id);
-    });
+    let mounted = true;
 
-    // Auth Subscription
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) {
-        fetchUserData(session.user.id);
+    const initApp = async () => {
+      try {
+        // Await the session check
+        const { data: { session: existingSession } } = await supabase.auth.getSession();
+        
+        if (mounted) {
+            setSession(existingSession);
+            if (existingSession) {
+                // BLOCKING FETCH: Wait for data before showing UI
+                await fetchUserData(existingSession.user.id);
+                
+                // RESTORE VIEW: Check if user was on Vault
+                const savedView = localStorage.getItem('virgil_active_view') as 'home' | 'vault';
+                if (savedView === 'vault') setView('vault');
+            }
+        }
+      } catch (e) {
+        console.error("Initialization error:", e);
+      } finally {
+        if (mounted) setIsLoading(false); // Only now do we render the app
+      }
+    };
+
+    initApp();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (!mounted) return;
+      setSession(newSession);
+      
+      if (newSession) {
+        // In case of late sign-in or token refresh
+        fetchUserData(newSession.user.id);
       } else {
         // Logout cleanup
         setUserDb({});
         setVaultIds([]);
         setProfile({ name: "Initiate", motto: "The Unwritten" });
         setView('home');
+        localStorage.removeItem('virgil_active_view');
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+        mounted = false;
+        subscription.unsubscribe();
+    };
   }, []);
 
   // --- SEARCH EFFECTS ---
@@ -389,6 +417,7 @@ function App() {
       if (error) alert(error.message);
       else {
         setView('vault');
+        localStorage.setItem('virgil_active_view', 'vault');
       }
     }
   };
@@ -403,8 +432,11 @@ function App() {
       setView('auth');
     } else {
       setView(targetView);
+      // Persist choice
+      if (targetView === 'vault') localStorage.setItem('virgil_active_view', 'vault');
+      else if (targetView === 'home') localStorage.setItem('virgil_active_view', 'home');
     }
-    // Reset selections on main nav change
+    
     if(targetView !== 'auth') {
         setSelectedList(null);
         setIsEditorMode(false);
@@ -412,28 +444,22 @@ function App() {
   };
 
   const handleUpdateLog = async (filmId: string, updates: Partial<{ watched: boolean; rating: number }>) => {
-    // 1. Calculate new state immediately
     const currentLog = userDb[filmId] || { watched: false, rating: 0 };
     const newLog = { ...currentLog, ...updates };
-    
-    // Auto-mark watched if rated
-    if (updates.rating && updates.rating > 0) {
-        newLog.watched = true;
-    }
+    if (updates.rating && updates.rating > 0) newLog.watched = true;
 
-    // 2. Optimistic Update (Immediate Feedback)
+    // Optimistic
     setUserDb(prev => ({ ...prev, [filmId]: newLog }));
 
-    // 3. Supabase Sync (Persistence)
+    // Supabase
     if (session) {
-        // We use the 'newLog' derived above to ensure what we send matches what we showed
-        const { error } = await supabase.from('user_logs').upsert({
-            user_id: session.user.id,
-            film_id: filmId,
-            watched: newLog.watched,
-            rating: newLog.rating,
-            notes: newLog.notes || ''
-        }, { onConflict: 'user_id, film_id' }); // Ensure conflict resolution on composite key
+      const { error } = await supabase.from('user_logs').upsert({
+          user_id: session.user.id,
+          film_id: filmId,
+          watched: newLog.watched,
+          rating: newLog.rating,
+          notes: newLog.notes || ''
+      }, { onConflict: 'user_id, film_id' });
       
       if (error) console.error('Supabase sync error:', error);
     }
@@ -471,7 +497,10 @@ function App() {
     const allLists = [...ARCHIVE_CATEGORIES.flatMap(c => c.lists).map(l => masterOverrides[l.id] || l), ...customLists];
     const target = allLists.find(l => l.id === listId);
     if (target) {
-        if (customLists.some(l => l.id === listId)) setView('vault');
+        if (customLists.some(l => l.id === listId)) {
+            setView('vault');
+            localStorage.setItem('virgil_active_view', 'vault');
+        }
         setSelectedList(target);
         setIsEditorMode(false);
         setSelectedFilm(null);
@@ -509,7 +538,6 @@ function App() {
     };
     setCustomLists(prev => [...prev, forkedList]);
     setVaultIds(prev => [...prev, newId]); 
-    // Note: Forking purely local for now until complex list storage is implemented, but adding ID to vault allows "tracking" it locally
     setSelectedList(forkedList);
     setEditingList(forkedList);
     setIsEditorMode(true);
@@ -694,8 +722,8 @@ function App() {
   // --- CALCULATIONS ---
   const getListProgress = (list: CuratedList) => {
     let allFilms: Film[] = [];
-    list.tiers.forEach(tier => { allFilms = [...allFilms, ...tier.films]; });
-    if (list.seriesTiers) { list.seriesTiers.forEach(tier => { allFilms = [...allFilms, ...tier.films]; }); }
+    list.tiers.forEach(tier => allFilms.push(...tier.films));
+    if (list.seriesTiers) list.seriesTiers.forEach(tier => allFilms.push(...tier.films));
     if (allFilms.length === 0) return 0;
     const watchedCount = allFilms.filter(film => userDb[film.id]?.watched).length;
     return Math.round((watchedCount / allFilms.length) * 100);
@@ -736,6 +764,18 @@ function App() {
       });
   };
   const currentTiers = getSortedTiers(currentTiersBase);
+
+  // --- LOADING SCREEN ---
+  if (isLoading) {
+      return (
+          <div className="h-screen w-full bg-[#F5C71A] flex items-center justify-center">
+              <div className="flex flex-col items-center gap-4">
+                  <div className="w-16 h-16 border-4 border-black border-t-transparent rounded-full animate-spin"></div>
+                  <h1 className="text-3xl font-black uppercase tracking-widest animate-pulse">INITIALIZING ARCHIVES...</h1>
+              </div>
+          </div>
+      );
+  }
 
   // --- MAIN RENDER BLOCK ---
   return (
