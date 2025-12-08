@@ -450,6 +450,219 @@ function App() {
     }
   };
 
+  const handleForkList = () => {
+    if (!selectedList) return;
+    if (isAdmin && !selectedList.isCustom) {
+        setEditingList(JSON.parse(JSON.stringify(selectedList)));
+        setIsEditorMode(true);
+        return;
+    }
+    const existingFork = customLists.find(l => l.originalListId === selectedList.id);
+    if (existingFork) {
+        if(window.confirm("You already have a remix of this journey. Would you like to open it?")) {
+            setSelectedList(existingFork);
+            setEditingList(existingFork);
+            setIsEditorMode(true);
+        }
+        return;
+    }
+    const newId = `custom_${Date.now()}`;
+    const forkedList: CuratedList = {
+      ...selectedList,
+      id: newId,
+      title: `${selectedList.title} (Remix)`,
+      subtitle: "My Custom Journey",
+      author: profile.name, 
+      privacy: 'public', 
+      originalListId: selectedList.id,
+      isCustom: true,
+      sherpaNotes: {},
+      status: 'draft'
+    };
+    setCustomLists(prev => [...prev, forkedList]);
+    setVaultIds(prev => [...prev, newId]); 
+    // Note: Forking purely local for now until complex list storage is implemented, but adding ID to vault allows "tracking" it locally
+    setSelectedList(forkedList);
+    setEditingList(forkedList);
+    setIsEditorMode(true);
+  };
+
+  const handleDeleteList = (e: React.MouseEvent, listId: string) => {
+      e.stopPropagation();
+      if (window.confirm("Are you sure you want to delete this journey? This cannot be undone.")) {
+          setCustomLists(prev => prev.filter(l => l.id !== listId));
+          setVaultIds(prev => prev.filter(id => id !== listId));
+          if (selectedList?.id === listId) {
+              setSelectedList(null);
+              setIsEditorMode(false);
+          }
+      }
+  };
+
+  const handleSaveList = () => {
+    if (!editingList) return;
+    if (editingList.isCustom) {
+        setCustomLists(prev => prev.map(l => l.id === editingList.id ? editingList : l));
+    } else {
+        setMasterOverrides(prev => ({...prev, [editingList.id]: editingList}));
+    }
+    setSelectedList(editingList);
+    setIsEditorMode(false);
+    setEditingList(null);
+    setAiSuggestions([]);
+  };
+
+  const handleCreateListBlank = () => {
+      const newId = `custom_${Date.now()}`;
+      const newList: CuratedList = {
+          id: newId,
+          title: "UNTITLED JOURNEY",
+          subtitle: "Curated by You",
+          description: "A fresh path.",
+          tiers: [{ level: 1, name: "TIER 1", films: [] }, { level: 2, name: "TIER 2", films: [] }],
+          isCustom: true,
+          author: profile.name,
+          privacy: 'public',
+          status: 'draft'
+      };
+      setCustomLists(prev => [...prev, newList]);
+      setVaultIds(prev => [...prev, newId]);
+      setSelectedList(newList);
+      setEditingList(newList);
+      setIsEditorMode(true);
+      setIsAICreatorOpen(false);
+  };
+
+  const handleGenerateAndCreate = async () => {
+      if (!aiCreatorQuery) return;
+      setIsGeneratingAI(true);
+      let suggestions: any[] = await getDirectorPicks(aiCreatorQuery);
+      if (suggestions.length === 0) {
+          const geminiSuggestions = await getAIListSuggestions(aiCreatorQuery);
+          suggestions = geminiSuggestions.map(s => ({
+              title: s.title, year: s.year, director: s.director,
+              posterUrl: undefined, overview: undefined, vote_average: 0
+          }));
+      }
+      const newId = `custom_${Date.now()}`;
+      const createPopulatedFilm = (s: any) => {
+          const f = createFilm(s.title, s.year, s.director, s.posterUrl);
+          if (s.overview) f.plot = s.overview; 
+          if (s.vote_average) f.imdbScore = s.vote_average;
+          return f;
+      };
+      const tier1Films = suggestions.slice(0, 5).map(createPopulatedFilm);
+      const tier2Films = suggestions.slice(5, 10).map(createPopulatedFilm);
+      const newList: CuratedList = {
+          id: newId, title: aiCreatorQuery.toUpperCase(), subtitle: "Curated Journey",
+          description: `A custom list based on ${aiCreatorQuery}`,
+          tiers: [{ level: 1, name: "ESSENTIALS", films: tier1Films }, { level: 2, name: "DEEP DIVE", films: tier2Films }, { level: 3, name: "TIER 3", films: [] }],
+          isCustom: true, author: profile.name, privacy: 'public', status: 'draft'
+      };
+      setCustomLists(prev => [...prev, newList]);
+      setVaultIds(prev => [...prev, newId]);
+      setSelectedList(newList);
+      setEditingList(newList);
+      setIsEditorMode(true);
+      setIsAICreatorOpen(false);
+      setIsGeneratingAI(false);
+      setAiSuggestions([]);
+  };
+
+  const handleTogglePublish = () => {
+    if (!editingList) return;
+    const newStatus = editingList.status === 'published' ? 'draft' : 'published';
+    setEditingList({...editingList, status: newStatus});
+  };
+
+  const handleAddTier = (isSeries: boolean) => {
+    if (!editingList) return;
+    const tiers = isSeries ? (editingList.seriesTiers || []) : editingList.tiers;
+    if (tiers.length >= 30) return;
+    const newTier: Tier = { level: tiers.length + 1, name: `TIER ${tiers.length + 1}`, films: [] };
+    const updatedList = { ...editingList };
+    if (isSeries) updatedList.seriesTiers = [...(updatedList.seriesTiers || []), newTier];
+    else updatedList.tiers = [...updatedList.tiers, newTier];
+    setEditingList(updatedList);
+  };
+
+  const handleRemoveTier = (tierIndex: number, isSeries: boolean) => {
+    if (!editingList) return;
+    const updatedList = { ...editingList };
+    if (isSeries && updatedList.seriesTiers) updatedList.seriesTiers = updatedList.seriesTiers.filter((_, i) => i !== tierIndex);
+    else updatedList.tiers = updatedList.tiers.filter((_, i) => i !== tierIndex);
+    setEditingList(updatedList);
+  };
+
+  const handleRemoveFilmFromTier = (filmId: string, tierIndex: number, isSeries: boolean) => {
+    if (!editingList) return;
+    const updatedList = { ...editingList };
+    const targetTiers = isSeries ? updatedList.seriesTiers : updatedList.tiers;
+    if (targetTiers) targetTiers[tierIndex].films = targetTiers[tierIndex].films.filter(f => f.id !== filmId);
+    setEditingList(updatedList);
+  };
+
+  const handleAddFilmToTier = (film: Film) => {
+    if (!editingList || !showTierSearchModal) return;
+    const { tierIndex, isSeries } = showTierSearchModal;
+    const updatedList = { ...editingList };
+    const targetTiers = isSeries ? (updatedList.seriesTiers || []) : updatedList.tiers;
+    if (targetTiers[tierIndex].films.length >= 6) { alert("Maximum 6 films allowed per tier."); return; }
+    const allExistingFilms = [...updatedList.tiers.flatMap(t => t.films), ...(updatedList.seriesTiers?.flatMap(t => t.films) || [])];
+    if (allExistingFilms.some(f => f.id === film.id)) { alert("This film is already in your list."); return; }
+    targetTiers[tierIndex].films.push(film);
+    setEditingList(updatedList);
+    setShowTierSearchModal(null);
+    setTierSearchQuery("");
+    setTierSearchResults([]);
+  };
+
+  const handleSaveSherpaNote = (note: string) => {
+    if (!editingList || !isEditContextMode) return;
+    const updatedList = { ...editingList };
+    updatedList.sherpaNotes = { ...(updatedList.sherpaNotes || {}), [isEditContextMode]: note };
+    setEditingList(updatedList);
+    setIsEditContextMode(null);
+  };
+
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+          const reader = new FileReader();
+          reader.onloadend = () => { setProfile(prev => ({ ...prev, avatar: reader.result as string })); };
+          reader.readAsDataURL(file);
+      }
+  };
+
+  const handleDragStart = (e: React.DragEvent, film: Film, sourceTierIndex: number) => {
+    e.dataTransfer.setData("filmId", film.id);
+    e.dataTransfer.setData("sourceTier", sourceTierIndex.toString());
+    e.dataTransfer.setData("filmData", JSON.stringify(film));
+  };
+
+  const handleDrop = (e: React.DragEvent, targetTierIndex: number) => {
+      e.preventDefault();
+      if (!editingList) return;
+      const filmId = e.dataTransfer.getData("filmId");
+      const sourceTierIndex = parseInt(e.dataTransfer.getData("sourceTier"));
+      const filmData = JSON.parse(e.dataTransfer.getData("filmData")) as Film;
+      const allExistingFilms = [...editingList.tiers.flatMap(t => t.films), ...(editingList.seriesTiers?.flatMap(t => t.films) || [])];
+      if (editingList.tiers[targetTierIndex].films.length >= 6 && sourceTierIndex !== targetTierIndex) { alert("Maximum 6 films allowed per tier."); return; }
+      if (isNaN(sourceTierIndex) && allExistingFilms.some(f => f.id === filmData.id)) { alert("Film already in list."); return; }
+      if (isNaN(sourceTierIndex)) {
+          const updatedList = { ...editingList };
+          updatedList.tiers[targetTierIndex].films.push(filmData);
+          setEditingList(updatedList);
+          setAiSuggestions(prev => prev.filter(f => f.title !== filmData.title));
+      } else {
+          if (sourceTierIndex === targetTierIndex) return;
+          const updatedList = { ...editingList };
+          updatedList.tiers[sourceTierIndex].films = updatedList.tiers[sourceTierIndex].films.filter(f => f.id !== filmId);
+          updatedList.tiers[targetTierIndex].films.push(filmData);
+          setEditingList(updatedList);
+      }
+  };
+
   // --- CALCULATIONS ---
   const getListProgress = (list: CuratedList) => {
     let allFilms: Film[] = [];
