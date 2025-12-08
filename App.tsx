@@ -713,19 +713,34 @@ function App() {
       const filmId = e.dataTransfer.getData("filmId");
       const sourceTierIndex = parseInt(e.dataTransfer.getData("sourceTier"));
       const filmData = JSON.parse(e.dataTransfer.getData("filmData")) as Film;
-      const allExistingFilms = [...editingList.tiers.flatMap(t => t.films), ...(editingList.seriesTiers?.flatMap(t => t.films) || [])];
-      if (editingList.tiers[targetTierIndex].films.length >= 6 && sourceTierIndex !== targetTierIndex) { alert("Maximum 6 films allowed per tier."); return; }
-      if (isNaN(sourceTierIndex) && allExistingFilms.some(f => f.id === filmData.id)) { alert("Film already in list."); return; }
+      
+      const targetTiersKey = viewMode === 'series' ? 'seriesTiers' : 'tiers';
+      const updatedList = { ...editingList };
+      const tiers = updatedList[targetTiersKey] || [];
+
+      // Validation
+      if (tiers[targetTierIndex].films.length >= 6 && sourceTierIndex !== targetTierIndex) { 
+          alert("Maximum 6 films allowed per tier."); 
+          return; 
+      }
+
+      const allExistingFilms = [...updatedList.tiers.flatMap(t => t.films), ...(updatedList.seriesTiers?.flatMap(t => t.films) || [])];
+      
+      if (isNaN(sourceTierIndex) && allExistingFilms.some(f => f.id === filmData.id)) { 
+          alert("Film already in list."); 
+          return; 
+      }
+
       if (isNaN(sourceTierIndex)) {
-          const updatedList = { ...editingList };
-          updatedList.tiers[targetTierIndex].films.push(filmData);
+          // New Film from Bin/Search
+          tiers[targetTierIndex].films.push(filmData);
           setEditingList(updatedList);
           setAiSuggestions(prev => prev.filter(f => f.title !== filmData.title));
       } else {
+          // Reorder / Move
           if (sourceTierIndex === targetTierIndex) return;
-          const updatedList = { ...editingList };
-          updatedList.tiers[sourceTierIndex].films = updatedList.tiers[sourceTierIndex].films.filter(f => f.id !== filmId);
-          updatedList.tiers[targetTierIndex].films.push(filmData);
+          tiers[sourceTierIndex].films = tiers[sourceTierIndex].films.filter(f => f.id !== filmId);
+          tiers[targetTierIndex].films.push(filmData);
           setEditingList(updatedList);
       }
   };
@@ -781,15 +796,26 @@ function App() {
   const getVaultLists = () => {
     const myLists = [...ARCHIVE_CATEGORIES.flatMap(c => c.lists).map(l => masterOverrides[l.id] || l), ...customLists].filter(list => vaultIds.includes(list.id));
     const active: CuratedList[] = [];
+    const drafts: CuratedList[] = [];
+    const published: CuratedList[] = [];
     const completed: CuratedList[] = [];
+    
     myLists.forEach(list => {
       const prog = getListProgress(list);
-      if (prog >= 100 && !list.isCustom) completed.push(list);
-      else active.push(list);
+      if (prog >= 100 && !list.isCustom) {
+          completed.push(list);
+      } else {
+          if (list.isCustom) {
+              if (list.status === 'published') published.push(list);
+              else drafts.push(list);
+          } else {
+              active.push(list);
+          }
+      }
     });
-    return { active, completed };
+    return { active, drafts, published, completed };
   };
-  const { active, completed } = getVaultLists();
+  const { active, drafts, published, completed } = getVaultLists();
 
   // --- RENDER HELPERS ---
   const currentList = isEditorMode ? editingList : selectedList;
@@ -929,6 +955,31 @@ function App() {
                           </div>
                       )}
                     </section>
+
+                    <section className="space-y-6">
+                       <div className="flex items-center justify-between border-b-4 border-black border-dashed pb-2">
+                          <div className="flex items-center gap-4"><div className="h-6 w-6 border-2 border-dashed border-black"></div><h2 className="text-2xl md:text-3xl font-black uppercase tracking-widest">My Creations</h2></div>
+                          <button onClick={() => setIsAICreatorOpen(true)} className="bg-black text-[#F5C71A] px-4 py-2 font-black uppercase text-sm hover:scale-105 transition-transform">+ Create Journey</button>
+                       </div>
+                       
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                          <div className="flex flex-col gap-4">
+                              <h3 className="font-bold font-mono uppercase opacity-70 border-b border-black">Drafts (Work in Progress)</h3>
+                              {drafts.length === 0 && <p className="text-sm italic opacity-50">No drafts.</p>}
+                              {drafts.map(list => (
+                                 <div key={list.id} onClick={() => { setSelectedList(list); setEditingList(list); setIsEditorMode(true); setAiSuggestions([]); }} className="relative flex flex-col text-left cursor-pointer border-2 border-dashed border-black p-4 bg-[#F5C71A] hover:bg-black hover:text-yellow-400">
+                                    <div className="absolute top-0 right-0 bg-black text-white px-2 text-[10px] font-bold">DRAFT</div>
+                                    <h3 className="text-lg font-black uppercase">{list.title}</h3>
+                                 </div>
+                              ))}
+                          </div>
+                          <div className="flex flex-col gap-4">
+                              <h3 className="font-bold font-mono uppercase opacity-70 border-b border-black">Published Journeys</h3>
+                              {published.length === 0 && <p className="text-sm italic opacity-50">No published lists.</p>}
+                              {published.map(list => <div key={list.id} onClick={() => setSelectedList(list)} className="relative flex flex-col text-left cursor-pointer border-4 border-black p-4 bg-[#F5C71A] hover:bg-black hover:text-yellow-400"><div className="absolute top-0 right-0 bg-black text-yellow-400 px-2 text-[10px] font-bold">PUBLISHED</div><h3 className="text-lg font-black uppercase">{list.title}</h3></div>)}
+                          </div>
+                       </div>
+                    </section>
                 </div>
             )}
         </MainLayout>
@@ -962,11 +1013,33 @@ function App() {
                 <div className="h-1 w-32 bg-black mx-auto mb-4"></div>
                 <p className="text-lg md:text-xl font-medium italic opacity-90 tracking-widest uppercase mb-6">{currentList.subtitle}</p>
             </header>
+            
+            {showTierSearchModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 pointer-events-auto">
+                 <div className="w-full max-w-2xl bg-[#F5C71A] border-4 border-black p-6 shadow-[8px_8px_0px_0px_#fff]">
+                    <h3 className="text-xl font-black uppercase mb-4">Add to Tier</h3>
+                    <input autoFocus type="text" placeholder="Search database or type custom..." className="w-full p-4 text-xl font-mono border-2 border-black bg-white mb-4 uppercase" value={tierSearchQuery} onChange={(e) => setTierSearchQuery(e.target.value)} />
+                    <div className="max-h-60 overflow-y-auto border-2 border-black bg-white">
+                       {tierSearchQuery.length > 0 && <button onClick={() => handleAddFilmToTier(createFilm(tierSearchQuery, new Date().getFullYear(), "Sherpa Selection"))} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b font-bold">+ ADD CUSTOM: "{tierSearchQuery}"</button>}
+                       {getAllFilms().filter(f => f.title.toLowerCase().includes(tierSearchQuery.toLowerCase())).map(film => (
+                         <button key={film.id} onClick={() => handleAddFilmToTier(film)} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b"><span className="font-bold uppercase">{film.title}</span></button>
+                       ))}
+                    </div>
+                    <button onClick={() => setShowTierSearchModal(null)} className="mt-4 text-sm underline uppercase font-bold">Cancel</button>
+                 </div>
+              </div>
+            )}
+
             <main className="max-w-7xl mx-auto px-4 relative pb-32">
                 {sortOption === 'chronological' ? ( <TimelineView tiers={currentTiersBase} userDb={userDb} onSelectFilm={setSelectedFilm} onUpdateLog={handleUpdateLog} /> ) : (
                     <div className="flex flex-col items-center">
                       {currentTiers.map((tier, tierIndex) => (
-                        <div key={tierIndex} className="relative flex flex-col items-center animate-fadeIn w-full">
+                        <div 
+                            key={tierIndex} 
+                            className="relative flex flex-col items-center animate-fadeIn w-full"
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => handleDrop(e, tierIndex)}
+                        >
                           {tierIndex > 0 && <div className="h-12 w-1 bg-black" />}
                           <div className="bg-[#F5C71A] border-2 border-black px-6 py-2 z-20 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative flex items-center gap-2">
                             {isEditorMode ? (
@@ -982,9 +1055,27 @@ function App() {
                           <div className="flex justify-center flex-wrap w-full gap-x-4 gap-y-8 min-h-[100px] border-2 border-dashed border-black/20 p-4">
                             {tier.films.map((film) => (
                                 <div key={film.id} className="relative"> 
-                                  <FilmCard film={film} log={userDb[film.id]} onClick={setSelectedFilm} isEditable={isEditorMode} hasNote={!!currentList.sherpaNotes?.[film.id]} onUpdateLog={handleUpdateLog} onDragStart={(e) => handleDragStart(e, film, tierIndex)} onRemove={() => handleRemoveFilmFromTier(film.id, tierIndex, viewMode === 'series')} />
+                                  <FilmCard 
+                                    film={film} 
+                                    log={userDb[film.id]} 
+                                    onClick={setSelectedFilm} 
+                                    isEditable={isEditorMode} 
+                                    hasNote={!!currentList.sherpaNotes?.[film.id]} 
+                                    onUpdateLog={handleUpdateLog} 
+                                    onDragStart={(e) => handleDragStart(e, film, tierIndex)} 
+                                    onRemove={() => handleRemoveFilmFromTier(film.id, tierIndex, viewMode === 'series')} 
+                                  />
                                 </div>
                             ))}
+                            {isEditorMode && (
+                                <button 
+                                    onClick={() => { setShowTierSearchModal({ tierIndex, isSeries: viewMode === 'series' }); }}
+                                    className="w-32 md:w-44 h-[5.5rem] border-2 border-dashed border-black flex flex-col items-center justify-center opacity-50 hover:opacity-100 hover:bg-black hover:text-[#F5C71A] transition-all"
+                                >
+                                    <span className="text-2xl font-black">+</span>
+                                    <span className="text-[10px] font-bold uppercase">Add Film</span>
+                                </button>
+                            )}
                           </div>
                         </div>
                       ))}
