@@ -133,9 +133,10 @@ interface MainLayoutProps {
   onLogout: () => void;
   onOpenSearch: () => void;
   onToggleAdmin: () => void;
+  onNavigateTab: (tab: 'archive' | 'vault') => void;
 }
 
-const MainLayout: React.FC<MainLayoutProps> = ({ children, activeTab, session, isAdmin, onLogout, onOpenSearch, onToggleAdmin }) => (
+const MainLayout: React.FC<MainLayoutProps> = ({ children, activeTab, session, isAdmin, onLogout, onOpenSearch, onToggleAdmin, onNavigateTab }) => (
   <div className="min-h-screen w-full bg-[#F5C71A] text-black font-sans selection:bg-black selection:text-[#F5C71A] flex flex-col transition-colors duration-300">
     <header className="pt-12 pb-8 text-center px-4 relative">
          <div className="absolute top-8 right-8 flex gap-4">
@@ -161,9 +162,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, activeTab, session, i
         <p className="text-xl md:text-3xl font-bold font-mono tracking-widest uppercase opacity-80 mb-8">Curated Cinematic Journeys</p>
         
         <div className="flex justify-center items-center gap-0 border-b-4 border-black w-full max-w-2xl mx-auto">
-          <Link to="/" className={`flex-1 py-4 text-xl md:text-2xl font-black uppercase tracking-widest text-center transition-all ${activeTab === 'archive' ? 'bg-black text-[#F5C71A]' : 'bg-transparent text-black hover:bg-black/10'}`}>Archive</Link>
+          <button onClick={() => onNavigateTab('archive')} className={`flex-1 py-4 text-xl md:text-2xl font-black uppercase tracking-widest text-center transition-all ${activeTab === 'archive' ? 'bg-black text-[#F5C71A]' : 'bg-transparent text-black hover:bg-black/10'}`}>Archive</button>
           <div className="w-1 h-full bg-black"></div>
-          <Link to="/vault" className={`flex-1 py-4 text-xl md:text-2xl font-black uppercase tracking-widest text-center transition-all ${activeTab === 'vault' ? 'bg-black text-[#F5C71A]' : 'bg-transparent text-black hover:bg-black/10'}`}>My Vault</Link>
+          <button onClick={() => onNavigateTab('vault')} className={`flex-1 py-4 text-xl md:text-2xl font-black uppercase tracking-widest text-center transition-all ${activeTab === 'vault' ? 'bg-black text-[#F5C71A]' : 'bg-transparent text-black hover:bg-black/10'}`}>My Vault</button>
         </div>
     </header>
     <main className="max-w-7xl mx-auto px-6 grid gap-16 mt-12 flex-grow w-full">
@@ -243,6 +244,7 @@ function App() {
   const [selectedList, setSelectedList] = useState<CuratedList | null>(null);
   const [selectedFilm, setSelectedFilm] = useState<Film | null>(null);
   const [viewMode, setViewMode] = useState<'cinema' | 'series'>('cinema');
+  const [activeTab, setActiveTab] = useState<'archive' | 'vault'>('archive');
   const [sortOption, setSortOption] = useState<SortOption>('curator');
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -281,72 +283,100 @@ function App() {
 
   // --- INITIALIZATION & DATA SYNC ---
 
-  // 1. Session & Real Data Fetching (Persistence)
+  const fetchUserData = async (userId: string) => {
+    try {
+      // 1. Fetch User Logs
+      const { data: logs, error: logsError } = await supabase
+        .from('user_logs')
+        .select('*')
+        .eq('user_id', userId);
+      
+      if (logs) {
+        const db: UserDatabase = {};
+        logs.forEach((row: any) => {
+          db[row.film_id] = { watched: row.watched, rating: row.rating, notes: row.notes };
+        });
+        setUserDb(db);
+      } else if (logsError) {
+        console.error("Error fetching logs:", logsError);
+      }
+
+      // 2. Fetch Vault
+      const { data: vault, error: vaultError } = await supabase
+        .from('vault')
+        .select('list_id')
+        .eq('user_id', userId);
+      
+      if (vault) {
+        setVaultIds(vault.map((row: any) => row.list_id));
+      } else if (vaultError) {
+        console.error("Error fetching vault:", vaultError);
+      }
+
+      // 3. Fetch Profile
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      
+      if (profileData) {
+        setProfile({
+          name: profileData.username || "Initiate",
+          motto: profileData.motto || "The Unwritten",
+          avatar: profileData.avatar_url || undefined
+        });
+      } else if (profileError && profileError.code !== 'PGRST116') { // Ignore "no rows" error
+        console.error("Error fetching profile:", profileError);
+      }
+    } catch (e) {
+      console.error("Unexpected error fetching data:", e);
+    }
+  };
+
   useEffect(() => {
+    // 1. Check initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) fetchAllUserData(session.user.id);
+      if (session) {
+        fetchUserData(session.user.id);
+      }
     });
 
+    // 2. Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) fetchAllUserData(session.user.id);
-      else {
+      if (session) {
+        fetchUserData(session.user.id);
+      } else {
+        // Reset local state on logout
         setUserDb({});
         setVaultIds([]);
-        // Optional: Reset profile to default if not logged in
+        setProfile({ name: "Initiate", motto: "The Unwritten" });
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchAllUserData = async (userId: string) => {
-    // A. Fetch User Logs
-    const { data: logs } = await supabase.from('user_logs').select('film_id, watched, rating, notes').eq('user_id', userId);
-    if (logs) {
-      const db: UserDatabase = {};
-      logs.forEach((row: any) => {
-        db[row.film_id] = { watched: row.watched, rating: row.rating, notes: row.notes };
-      });
-      setUserDb(db);
-    }
-
-    // B. Fetch Vault
-    const { data: vault } = await supabase.from('vault').select('list_id').eq('user_id', userId);
-    if (vault) {
-      setVaultIds(vault.map((row: any) => row.list_id));
-    }
-
-    // C. Fetch Profile
-    const { data: profileData } = await supabase.from('profiles').select('username, motto, avatar_url').eq('id', userId).single();
-    if (profileData) {
-      setProfile({
-        name: profileData.username || "Initiate",
-        motto: profileData.motto || "The Unwritten",
-        avatar: profileData.avatar_url || undefined
-      });
-    }
-  };
-
-  // 2. Load Local Storage (Fallback / Settings)
+  // Local Storage Fallbacks (Read-Only fallback for guest mode / custom lists not yet in DB)
   useEffect(() => {
     const savedCustom = localStorage.getItem('virgil_custom_lists');
     if (savedCustom) setCustomLists(JSON.parse(savedCustom));
     const savedOverrides = localStorage.getItem('virgil_master_overrides');
     if (savedOverrides) setMasterOverrides(JSON.parse(savedOverrides));
     
-    // Fallback profile if not logged in
+    // Only load profile from local storage if NOT logged in
     if (!session) {
       const savedProfile = localStorage.getItem('virgil_user_profile');
       if (savedProfile) setProfile(JSON.parse(savedProfile));
     }
   }, [session]);
 
-  // 3. Save Local Storage
+  // Local Storage Writes (Sync to local as backup)
   useEffect(() => { localStorage.setItem('virgil_custom_lists', JSON.stringify(customLists)); }, [customLists]);
   useEffect(() => { localStorage.setItem('virgil_master_overrides', JSON.stringify(masterOverrides)); }, [masterOverrides]);
-  useEffect(() => { if(!session) localStorage.setItem('virgil_user_profile', JSON.stringify(profile)); }, [profile, session]);
+  useEffect(() => { if (!session) localStorage.setItem('virgil_user_profile', JSON.stringify(profile)); }, [profile, session]);
 
   // Live Search
   useEffect(() => {
@@ -399,20 +429,16 @@ function App() {
   };
 
   const handleUpdateLog = async (filmId: string, updates: Partial<{ watched: boolean; rating: number }>) => {
-    // 1. Optimistic Update
-    setUserDb(prev => {
-      const currentLog = prev[filmId] || { watched: false, rating: 0 };
-      const newLog = { ...currentLog, ...updates };
-      if (updates.rating && updates.rating > 0) newLog.watched = true;
-      return { ...prev, [filmId]: newLog };
-    });
+    // 1. Calculate new state derived from current
+    const currentLog = userDb[filmId] || { watched: false, rating: 0, notes: '' };
+    const newLog = { ...currentLog, ...updates };
+    if (updates.rating && updates.rating > 0) newLog.watched = true;
 
-    // 2. Supabase Sync
+    // 2. Optimistic Update (Immediate UI feedback)
+    setUserDb(prev => ({ ...prev, [filmId]: newLog }));
+
+    // 3. Supabase Sync (Persistence)
     if (session) {
-      const currentLog = userDb[filmId] || { watched: false, rating: 0 };
-      const newLog = { ...currentLog, ...updates };
-      if (updates.rating && updates.rating > 0) newLog.watched = true;
-
       const { error } = await supabase
         .from('user_logs')
         .upsert({
@@ -430,14 +456,25 @@ function App() {
   const handleToggleVault = async (e: React.MouseEvent, listId: string) => {
     e.stopPropagation();
     let newVaultIds = [];
-    if (vaultIds.includes(listId)) {
+    const isRemoving = vaultIds.includes(listId);
+
+    if (isRemoving) {
       newVaultIds = vaultIds.filter(id => id !== listId);
-      if (session) await supabase.from('vault').delete().match({ user_id: session.user.id, list_id: listId });
     } else {
       newVaultIds = [...vaultIds, listId];
-      if (session) await supabase.from('vault').insert({ user_id: session.user.id, list_id: listId });
     }
+    
+    // Optimistic Update
     setVaultIds(newVaultIds);
+
+    // Supabase Sync
+    if (session) {
+      if (isRemoving) {
+        await supabase.from('vault').delete().match({ user_id: session.user.id, list_id: listId });
+      } else {
+        await supabase.from('vault').insert({ user_id: session.user.id, list_id: listId });
+      }
+    }
   };
 
   const saveProfile = async () => {
@@ -458,7 +495,7 @@ function App() {
     const target = allLists.find(l => l.id === listId);
     if (target) {
         const isCustom = customLists.some(l => l.id === listId);
-        if (isCustom) navigate('/vault');
+        if (isCustom) setActiveTab('vault');
         setSelectedList(target);
         setIsEditorMode(false);
         setSelectedFilm(null);
@@ -495,7 +532,8 @@ function App() {
       status: 'draft'
     };
     setCustomLists(prev => [...prev, forkedList]);
-    setVaultIds(prev => [...prev, newId]); // Note: Custom lists not synced to vault table yet unless saved separately, keeping local for now as per instructions
+    setVaultIds(prev => [...prev, newId]); 
+    // Note: Forking purely local for now until complex list storage is implemented, but adding ID to vault allows "tracking" it locally
     setSelectedList(forkedList);
     setEditingList(forkedList);
     setIsEditorMode(true);
@@ -953,7 +991,7 @@ function App() {
         <Route path="/auth" element={session ? <Navigate to="/vault" /> : <AuthScreen onAuth={handleAuth} />} />
         
         <Route path="/" element={
-          <MainLayout activeTab="archive" session={session} isAdmin={isAdmin} onLogout={handleLogout} onOpenSearch={() => setIsSearchOpen(true)} onToggleAdmin={toggleAdmin}>
+          <MainLayout activeTab="archive" session={session} isAdmin={isAdmin} onLogout={handleLogout} onOpenSearch={() => setIsSearchOpen(true)} onToggleAdmin={toggleAdmin} onNavigateTab={(tab) => setActiveTab(tab)}>
              {ARCHIVE_CATEGORIES.map((category) => {
              const isExpanded = expandedCategories[category.title];
              const visibleLists = isExpanded ? category.lists : category.lists.slice(0, 8);
@@ -985,7 +1023,7 @@ function App() {
 
         <Route path="/vault" element={
           !session ? <Navigate to="/auth" /> :
-          <MainLayout activeTab="vault" session={session} isAdmin={isAdmin} onLogout={handleLogout} onOpenSearch={() => setIsSearchOpen(true)} onToggleAdmin={toggleAdmin}>
+          <MainLayout activeTab="vault" session={session} isAdmin={isAdmin} onLogout={handleLogout} onOpenSearch={() => setIsSearchOpen(true)} onToggleAdmin={toggleAdmin} onNavigateTab={(tab) => setActiveTab(tab)}>
              <div className="space-y-16 animate-fadeIn">
                 {/* IDENTITY CARD */}
                 <div className="w-full max-w-5xl mx-auto bg-black text-[#F5C71A] shadow-[12px_12px_0px_0px_rgba(0,0,0,0.2)] border-4 border-black flex flex-col md:flex-row overflow-hidden relative">
