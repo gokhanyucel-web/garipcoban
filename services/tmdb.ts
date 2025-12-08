@@ -144,7 +144,6 @@ export const searchMovies = async (query: string): Promise<Film[]> => {
 
         if (!data.results) return [];
 
-        // Filter out results without posters to keep the UI clean, or keep them with placeholders
         return data.results.map((m: any) => {
             const releaseDate = m.release_date ? m.release_date.split('-')[0] : "";
             const year = releaseDate ? parseInt(releaseDate) : 0;
@@ -152,7 +151,6 @@ export const searchMovies = async (query: string): Promise<Film[]> => {
             
             // Create base film object using the helper
             // We use "Unknown" for director initially as search results don't provide crew.
-            // FilmModal will fetch the real director when clicked.
             const film = createFilm(m.title, year, "Unknown", poster);
             
             // Enrich with details available in search result
@@ -160,7 +158,6 @@ export const searchMovies = async (query: string): Promise<Film[]> => {
             film.imdbScore = m.vote_average;
             
             // Append TMDB ID to internal slug to ensure uniqueness in search lists
-            // (e.g. if there are two movies named "Avatar", createFilm produces same slug)
             film.id = `${film.id}-${m.id}`;
             
             return film;
