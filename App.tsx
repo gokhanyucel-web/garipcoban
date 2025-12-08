@@ -33,6 +33,7 @@ function App() {
   const [editingList, setEditingList] = useState<CuratedList | null>(null);
   const [showTierSearchModal, setShowTierSearchModal] = useState<{tierIndex: number, isSeries: boolean} | null>(null);
   const [tierSearchQuery, setTierSearchQuery] = useState("");
+  const [tierSearchResults, setTierSearchResults] = useState<Film[]>([]); // New state for modal search
   const [isEditContextMode, setIsEditContextMode] = useState<string | null>(null);
   
   // AI Creator State
@@ -69,7 +70,7 @@ function App() {
   useEffect(() => { localStorage.setItem('virgil_master_overrides', JSON.stringify(masterOverrides)); }, [masterOverrides]);
   useEffect(() => { localStorage.setItem('virgil_user_profile', JSON.stringify(profile)); }, [profile]);
 
-  // Live Search Effect
+  // Live Search Effect (Global Header Search)
   useEffect(() => {
     if (globalSearchQuery.length > 2) {
        const timer = setTimeout(() => {
@@ -80,6 +81,18 @@ function App() {
        setSearchResults([]);
     }
   }, [globalSearchQuery]);
+
+  // Editor Modal Search Effect (Global TMDB Search)
+  useEffect(() => {
+    if (tierSearchQuery.length > 2) {
+       const timer = setTimeout(() => {
+          searchMovies(tierSearchQuery).then(setTierSearchResults);
+       }, 300);
+       return () => clearTimeout(timer);
+    } else {
+        setTierSearchResults([]);
+    }
+  }, [tierSearchQuery]);
 
   // --- HANDLERS ---
 
@@ -326,6 +339,7 @@ function App() {
     setEditingList(updatedList);
     setShowTierSearchModal(null);
     setTierSearchQuery("");
+    setTierSearchResults([]);
   };
 
   const handleSaveSherpaNote = (note: string) => {
@@ -794,9 +808,9 @@ function App() {
 
                        {isEditingProfile ? (
                            <div className="flex flex-col gap-2 w-full">
-                               <input className="bg-black border border-[#F5C71A] text-[#F5C71A] px-2 py-1 text-center font-black uppercase text-lg" value={profile.name} onChange={(e) => setProfile({...profile, name: e.target.value})} />
+                               <input className="w-full bg-black border border-[#F5C71A] text-[#F5C71A] p-2 text-center font-black uppercase text-lg" value={profile.name} onChange={(e) => setProfile({...profile, name: e.target.value})} />
                                <textarea 
-                                  className="bg-black border border-[#F5C71A] text-[#F5C71A] px-2 py-1 text-center font-mono text-xs resize-none h-20 focus:outline-none" 
+                                  className="w-full bg-black border border-[#F5C71A] text-[#F5C71A] p-2 text-center font-mono text-xs resize-none h-20 focus:outline-none" 
                                   value={profile.motto} 
                                   onChange={(e) => setProfile({...profile, motto: e.target.value})} 
                                />
@@ -953,14 +967,13 @@ function App() {
                     </h2>
                     <div className="flex flex-col gap-2">
                         <p className="font-mono text-xs opacity-60 max-w-sm">
-                            Virgil is a curated discovery platform designed to replace algorithms with curated content lists.
+                            Virgil is a curated discovery platform that transforms recommendations into guided learning experiences.
                         </p>
                     </div>
                 </div>
 
                 <div className="flex flex-col items-end gap-8 text-right">
                     <div className="flex gap-6 text-sm font-bold uppercase tracking-widest">
-                        <span className="cursor-pointer hover:text-white hover:underline decoration-2 underline-offset-4">Manifesto</span>
                         <span className="cursor-pointer hover:text-white hover:underline decoration-2 underline-offset-4 opacity-50">Privacy</span>
                         <button onClick={toggleAdmin} className={`cursor-pointer hover:text-white hover:underline decoration-2 underline-offset-4 uppercase ${isAdmin ? 'text-red-500 font-black' : 'opacity-50'}`}>
                             {isAdmin ? 'Admin Active' : 'Admin'}
@@ -1004,10 +1017,28 @@ function App() {
               <h3 className="text-xl font-black uppercase mb-4">Add to Tier</h3>
               <input autoFocus type="text" placeholder="Search database or type custom..." className="w-full p-4 text-xl font-mono border-2 border-black bg-white mb-4 uppercase" value={tierSearchQuery} onChange={(e) => setTierSearchQuery(e.target.value)} />
               <div className="max-h-60 overflow-y-auto border-2 border-black bg-white">
+                 {/* SHOW LOCAL CUSTOM IF TYPING */}
                  {tierSearchQuery.length > 0 && <button onClick={() => handleAddFilmToTier(createFilm(tierSearchQuery, new Date().getFullYear(), "Sherpa Selection"))} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b font-bold">+ ADD CUSTOM: "{tierSearchQuery}"</button>}
-                 {getAllFilms().filter(f => f.title.toLowerCase().includes(tierSearchQuery.toLowerCase())).map(film => (
-                   <button key={film.id} onClick={() => handleAddFilmToTier(film)} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b"><span className="font-bold uppercase">{film.title}</span></button>
-                 ))}
+                 
+                 {/* SHOW TMDB RESULTS IF AVAILABLE, ELSE FALLBACK TO LOCAL FILTER (BUT TMDB IS PRIORITY) */}
+                 {tierSearchQuery.length > 2 ? (
+                     tierSearchResults.map(film => (
+                        <button key={film.id} onClick={() => handleAddFilmToTier(film)} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b flex justify-between items-center group">
+                            <div>
+                                <span className="font-bold uppercase">{film.title}</span>
+                                <span className="text-xs ml-2 opacity-60 font-mono">{film.year}</span>
+                            </div>
+                            <span className="text-xs opacity-0 group-hover:opacity-100 uppercase font-black">+ ADD</span>
+                        </button>
+                     ))
+                 ) : (
+                     // Show local filter only if query is short or TMDB hasn't loaded yet/failed, 
+                     // but primarily we rely on TMDB now for "GLOBAL" search.
+                     // We can keep local filter for speed on short queries.
+                     getAllFilms().filter(f => f.title.toLowerCase().includes(tierSearchQuery.toLowerCase())).slice(0, 10).map(film => (
+                       <button key={film.id} onClick={() => handleAddFilmToTier(film)} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b"><span className="font-bold uppercase">{film.title}</span></button>
+                     ))
+                 )}
               </div>
               <button onClick={() => setShowTierSearchModal(null)} className="mt-4 text-sm underline uppercase font-bold">Cancel</button>
            </div>
