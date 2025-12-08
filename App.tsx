@@ -280,19 +280,21 @@ function App() {
 
   const fetchUserData = async (userId: string) => {
     try {
-        // 1. Logs - The Critical Fix: Map Array to Object correctly
+        // 1. Logs - Map Array to Object correctly, ensuring string keys
         const { data: logs, error: logsError } = await supabase
             .from('user_logs')
-            .select('film_id, watched, rating, notes')
+            .select('*')
             .eq('user_id', userId);
 
         if (logs) {
             const db: UserDatabase = {};
-            logs.forEach((row: any) => {
-                db[row.film_id] = { 
-                    watched: row.watched, 
-                    rating: row.rating, 
-                    notes: row.notes 
+            logs.forEach((log: any) => {
+                // Ensure key is a string to match Film IDs
+                const key = String(log.film_id);
+                db[key] = { 
+                    watched: log.watched, 
+                    rating: log.rating, 
+                    notes: log.notes || '' 
                 };
             });
             setUserDb(db);
@@ -452,13 +454,16 @@ function App() {
     if (session) {
       const { error } = await supabase.from('user_logs').upsert({
           user_id: session.user.id,
-          film_id: filmId,
+          film_id: String(filmId), // Ensure ID is string to match DB text type if necessary
           watched: newLog.watched,
           rating: newLog.rating,
           notes: newLog.notes || ''
-      }, { onConflict: 'user_id, film_id' });
+      }, { onConflict: 'user_id, film_id' }); // Strict Upsert on Constraint
       
-      if (error) console.error('Supabase sync error:', error);
+      if (error) {
+          console.error('Supabase Save Error:', error);
+          alert("SAVE FAILED: " + error.message);
+      }
     }
   };
 
