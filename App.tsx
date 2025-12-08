@@ -743,11 +743,38 @@ function App() {
   const calculateSherpaIdentity = () => {
     const watchedEntries = Object.entries(userDb).filter(([_, log]) => (log as UserFilmLog).watched);
     const totalWatched = watchedEntries.length;
+    
+    // Create a Map for O(1) film lookup
+    const allFilmsMap = new Map<string, Film>();
+    
+    // 1. Index Archive Films
+    ARCHIVE_CATEGORIES.forEach(cat => {
+        cat.lists.forEach(l => {
+            l.tiers.forEach(t => t.films.forEach(f => allFilmsMap.set(f.id, f)));
+            l.seriesTiers?.forEach(t => t.films.forEach(f => allFilmsMap.set(f.id, f)));
+        });
+    });
+
+    // 2. Index Custom/UGC Films
+    customLists.forEach(l => {
+        l.tiers.forEach(t => t.films.forEach(f => allFilmsMap.set(f.id, f)));
+        l.seriesTiers?.forEach(t => t.films.forEach(f => allFilmsMap.set(f.id, f)));
+    });
+
+    let totalRuntime = 0;
+    watchedEntries.forEach(([filmId]) => {
+        const film = allFilmsMap.get(filmId);
+        // Default to 120 mins if runtime missing
+        totalRuntime += (film?.runtime || 120);
+    });
+
+    const totalHours = Math.floor(totalRuntime / 60);
+
     // ... simplified logic for brevity, core logic same as before ...
     let rank = "INITIATE";
     if (totalWatched > 10) rank = "ADEPT";
     if (totalWatched > 50) rank = "MASTER";
-    return { totalWatched, fullTitle: `${rank} EXPLORER`, totalCompleted: 0, totalHours: 0 };
+    return { totalWatched, fullTitle: `${rank} EXPLORER`, totalCompleted: 0, totalHours };
   };
   const sherpaIdentity = calculateSherpaIdentity();
 
@@ -775,6 +802,8 @@ function App() {
       });
   };
   const currentTiers = getSortedTiers(currentTiersBase);
+  const isSavedInVault = currentList ? vaultIds.includes(currentList.id) : false;
+  const canRemix = currentList ? !currentList.isCustom : false;
 
   // --- LOADING SCREEN ---
   if (isLoading) {
@@ -875,12 +904,12 @@ function App() {
                                    <button onClick={saveProfile} className="bg-[#F5C71A] text-black text-xs font-bold py-1 flex items-center justify-center gap-1"><Save size={12}/> SAVE</button>
                                </div>
                            ) : (
-                               <><h3 className="font-black text-xl uppercase tracking-wider text-center">{profile.name}</h3><p className="text-[10px] font-mono opacity-60 uppercase tracking-widest mb-4 text-center">"{profile.motto}"</p><button onClick={() => setIsEditingProfile(true)} className="text-[10px] underline opacity-50 hover:opacity-100 mb-4">Edit Identity</button></>
+                               <><h3 className="font-black text-xl uppercase tracking-wider text-center">{profile.name}</h3><p className="text-[10px] font-mono opacity-60 uppercase tracking-widest mb-4 text-center">"{profile.motto || 'Edit to add your philosophy...'}"</p><button onClick={() => setIsEditingProfile(true)} className="text-[10px] underline opacity-50 hover:opacity-100 mb-4">Edit Identity</button></>
                            )}
                        </div>
                        <div className="flex-1 p-8 flex flex-col justify-center relative">
-                           <div className="mb-8"><span className="text-[10px] font-mono uppercase tracking-[0.4em] opacity-60 bg-[#F5C71A] text-black px-2 py-1">Identity Archetype</span><h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter leading-none mt-2">{sherpaIdentity.fullTitle}</h2><p className="font-mono text-sm opacity-60 mt-2 max-w-md">"Cinema is truth 24 times a second."</p></div>
-                           <div className="flex gap-8 border-t-2 border-dashed border-[#F5C71A]/30 pt-6"><div className="flex flex-col"><span className="text-3xl font-mono font-bold">{sherpaIdentity.totalWatched}</span><span className="text-[9px] uppercase tracking-wider opacity-60">Films Logged</span></div><div className="flex flex-col"><span className="text-3xl font-mono font-bold">{active.length}</span><span className="text-[9px] uppercase tracking-wider opacity-60">Active Journeys</span></div></div>
+                           <div className="mb-8"><span className="text-[10px] font-mono uppercase tracking-[0.4em] opacity-60 bg-[#F5C71A] text-black px-2 py-1">Identity Archetype</span><h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter leading-none mt-2">{sherpaIdentity.fullTitle}</h2><p className="font-mono text-sm opacity-60 mt-2 max-w-md">"{profile.motto || "Cinema is truth 24 times a second."}"</p></div>
+                           <div className="flex gap-8 border-t-2 border-dashed border-[#F5C71A]/30 pt-6"><div className="flex flex-col"><span className="text-3xl font-mono font-bold">{sherpaIdentity.totalWatched}</span><span className="text-[9px] uppercase tracking-wider opacity-60">Films Logged</span></div><div className="flex flex-col"><span className="text-3xl font-mono font-bold">{sherpaIdentity.totalHours}</span><span className="text-[9px] uppercase tracking-wider opacity-60">Hours</span></div><div className="flex flex-col"><span className="text-3xl font-mono font-bold">{active.length}</span><span className="text-[9px] uppercase tracking-wider opacity-60">Active Journeys</span></div></div>
                        </div>
                     </div>
 
@@ -911,7 +940,21 @@ function App() {
             <nav className="fixed top-0 left-0 w-full z-40 px-6 py-4 flex justify-between items-start pointer-events-none">
               <button onClick={() => { setSelectedList(null); setIsEditorMode(false); }} className="pointer-events-auto bg-[#F5C71A] border-2 border-black px-4 py-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] font-black uppercase tracking-wider text-sm hover:bg-black hover:text-[#F5C71A] transition-colors">← Back</button>
               <div className="flex gap-2 pointer-events-auto">
-                 <button onClick={(e) => handleToggleVault(e, currentList.id)} className={`px-4 py-2 border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${vaultIds.includes(currentList.id) ? 'bg-black text-[#F5C71A]' : 'bg-[#F5C71A] text-black'}`}>{vaultIds.includes(currentList.id) ? "✓ SAVED" : "+ ADD TO VAULT"}</button>
+                 {isEditorMode ? (
+                     <div className="flex gap-2 items-center">
+                        <button onClick={handleTogglePublish} className={`border-2 border-black px-4 py-2 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all ${editingList?.status === 'published' ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>{editingList?.status === 'published' ? 'UNPUBLISH' : 'PUBLISH'}</button>
+                        <button onClick={handleSaveList} className="bg-green-600 text-white border-2 border-black px-4 py-2 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1">SAVE & EXIT</button>
+                     </div>
+                 ) : (
+                     <>
+                        {currentList.isCustom ? (
+                             <button onClick={() => { setEditingList(currentList); setIsEditorMode(true); }} className="bg-white border-2 border-black px-4 py-2 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-black hover:text-[#F5C71A]">EDIT LIST</button>
+                        ) : (
+                             <button onClick={handleForkList} className="bg-white border-2 border-black px-4 py-2 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-black hover:text-[#F5C71A]">REMIX THIS JOURNEY</button>
+                        )}
+                        <button onClick={(e) => handleToggleVault(e, currentList.id)} className={`px-4 py-2 border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${vaultIds.includes(currentList.id) ? 'bg-black text-[#F5C71A]' : 'bg-[#F5C71A] text-black'}`}>{vaultIds.includes(currentList.id) ? "✓ SAVED" : "+ ADD TO VAULT"}</button>
+                     </>
+                 )}
               </div>
             </nav>
             <header className="pt-20 pb-8 text-center px-4 relative z-20 flex flex-col items-center">
@@ -926,13 +969,20 @@ function App() {
                         <div key={tierIndex} className="relative flex flex-col items-center animate-fadeIn w-full">
                           {tierIndex > 0 && <div className="h-12 w-1 bg-black" />}
                           <div className="bg-[#F5C71A] border-2 border-black px-6 py-2 z-20 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative flex items-center gap-2">
-                            <h2 className="text-sm md:text-lg font-black uppercase tracking-widest text-center">{tier.name}</h2>
+                            {isEditorMode ? (
+                                <div className="flex items-center gap-2">
+                                  <input value={tier.name} onChange={(e) => { const newList = {...editingList!}; (viewMode === 'series' ? newList.seriesTiers! : newList.tiers)[tierIndex].name = e.target.value; setEditingList(newList); }} className="text-sm md:text-lg font-black uppercase tracking-widest text-center bg-transparent focus:outline-none" />
+                                  <button onClick={() => handleRemoveTier(tierIndex, viewMode === 'series')} className="text-red-600 font-bold ml-2 text-xs">x</button>
+                                </div>
+                            ) : (
+                                <h2 className="text-sm md:text-lg font-black uppercase tracking-widest text-center">{tier.name}</h2>
+                            )}
                           </div>
                           <div className="h-8 w-1 bg-black" />
                           <div className="flex justify-center flex-wrap w-full gap-x-4 gap-y-8 min-h-[100px] border-2 border-dashed border-black/20 p-4">
                             {tier.films.map((film) => (
                                 <div key={film.id} className="relative"> 
-                                  <FilmCard film={film} log={userDb[film.id]} onClick={setSelectedFilm} isEditable={false} hasNote={!!currentList.sherpaNotes?.[film.id]} onUpdateLog={handleUpdateLog} />
+                                  <FilmCard film={film} log={userDb[film.id]} onClick={setSelectedFilm} isEditable={isEditorMode} hasNote={!!currentList.sherpaNotes?.[film.id]} onUpdateLog={handleUpdateLog} onDragStart={(e) => handleDragStart(e, film, tierIndex)} onRemove={() => handleRemoveFilmFromTier(film.id, tierIndex, viewMode === 'series')} />
                                 </div>
                             ))}
                           </div>

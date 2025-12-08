@@ -137,7 +137,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                 </div>
             )}
 
-            {/* CREDITS BOX - UPDATED */}
+            {/* CREDITS BOX */}
             <div className="w-full text-black border-2 border-black bg-white/20 p-3 text-sm space-y-2">
                <div className="grid grid-cols-[80px_1fr] gap-2 border-b border-black/20 pb-2">
                   <span className="font-bold uppercase opacity-70">Director</span>
