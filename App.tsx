@@ -336,6 +336,10 @@ function App() {
   useEffect(() => {
     let mounted = true;
 
+    // Load custom lists from local storage as they are not yet in DB
+    const savedCustom = localStorage.getItem('virgil_custom_lists');
+    if (savedCustom) setCustomLists(JSON.parse(savedCustom));
+
     const initApp = async () => {
       try {
         const { data: { session: existingSession } } = await supabase.auth.getSession();
@@ -381,6 +385,11 @@ function App() {
         subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    // Persist Custom Lists to LocalStorage
+    localStorage.setItem('virgil_custom_lists', JSON.stringify(customLists));
+  }, [customLists]);
 
   // --- SEARCH EFFECTS ---
   useEffect(() => {
