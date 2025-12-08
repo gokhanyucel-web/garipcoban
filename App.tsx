@@ -8,7 +8,7 @@ import { getAIListSuggestions } from './services/geminiService';
 import { getDirectorPicks, searchMovies } from './services/tmdb';
 import { Search, Twitter, Instagram, Mail, ShieldAlert, Save, Trash2, LogOut, User } from 'lucide-react';
 
-// --- STATIC COMPONENTS (Defined outside App to prevent re-renders/focus loss) ---
+// --- STATIC COMPONENTS ---
 
 const AuthScreen = ({ onAuth, onCancel }: { onAuth: (mode: 'signin' | 'signup', data: any) => Promise<void>, onCancel: () => void }) => {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
@@ -280,7 +280,7 @@ function App() {
 
   const fetchUserData = async (userId: string) => {
     try {
-        // 1. Logs - Ensure we select relevant columns and MAP correctly
+        // 1. Logs - The Critical Fix: Map Array to Object correctly
         const { data: logs, error: logsError } = await supabase
             .from('user_logs')
             .select('film_id, watched, rating, notes')
@@ -336,16 +336,15 @@ function App() {
 
     const initApp = async () => {
       try {
-        // Await the session check
         const { data: { session: existingSession } } = await supabase.auth.getSession();
         
         if (mounted) {
             setSession(existingSession);
             if (existingSession) {
-                // BLOCKING FETCH: Wait for data before showing UI
+                // BLOCKING: Wait for data before rendering UI to prevent race condition
                 await fetchUserData(existingSession.user.id);
                 
-                // RESTORE VIEW: Check if user was on Vault
+                // VIEW PERSISTENCE: Restore view from localStorage if set
                 const savedView = localStorage.getItem('virgil_active_view') as 'home' | 'vault';
                 if (savedView === 'vault') setView('vault');
             }
@@ -353,7 +352,7 @@ function App() {
       } catch (e) {
         console.error("Initialization error:", e);
       } finally {
-        if (mounted) setIsLoading(false); // Only now do we render the app
+        if (mounted) setIsLoading(false); // Unblock UI
       }
     };
 
@@ -364,7 +363,6 @@ function App() {
       setSession(newSession);
       
       if (newSession) {
-        // In case of late sign-in or token refresh
         fetchUserData(newSession.user.id);
       } else {
         // Logout cleanup
@@ -432,7 +430,6 @@ function App() {
       setView('auth');
     } else {
       setView(targetView);
-      // Persist choice
       if (targetView === 'vault') localStorage.setItem('virgil_active_view', 'vault');
       else if (targetView === 'home') localStorage.setItem('virgil_active_view', 'home');
     }
@@ -448,10 +445,10 @@ function App() {
     const newLog = { ...currentLog, ...updates };
     if (updates.rating && updates.rating > 0) newLog.watched = true;
 
-    // Optimistic
+    // Optimistic Update
     setUserDb(prev => ({ ...prev, [filmId]: newLog }));
 
-    // Supabase
+    // Database Sync
     if (session) {
       const { error } = await supabase.from('user_logs').upsert({
           user_id: session.user.id,
