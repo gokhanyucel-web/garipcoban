@@ -173,7 +173,6 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
               <div className="flex justify-between items-end">
                 <div className="flex gap-4">
                      <p className="text-xl font-mono font-bold">YEAR: {film.year}</p>
-                     <p className="text-xl font-mono font-bold opacity-60">RATING: {displayVoteAverage}/10</p>
                 </div>
                 {listTitle && <p className="text-xs font-mono opacity-60 uppercase">Context: {listTitle}</p>}
               </div>

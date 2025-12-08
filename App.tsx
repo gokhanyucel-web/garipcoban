@@ -6,7 +6,7 @@ import FilmCard from './components/FilmCard';
 import FilmModal from './components/FilmModal';
 import { getAIListSuggestions } from './services/geminiService';
 import { getDirectorPicks, searchMovies } from './services/tmdb';
-import { Search, Twitter, Instagram, Mail, ShieldAlert, Save, Trash2, LogOut, User } from 'lucide-react';
+import { Search, Twitter, Instagram, Mail, ShieldAlert, Save, Trash2, LogOut, User, MinusCircle } from 'lucide-react';
 
 // --- STATIC COMPONENTS ---
 
@@ -280,58 +280,44 @@ function App() {
 
   const fetchUserData = async (userId: string) => {
     try {
-        // 1. Logs - Map Array to Object correctly, ensuring string keys
-        const { data: logs, error: logsError } = await supabase
-            .from('user_logs')
-            .select('*')
-            .eq('user_id', userId);
-
+        // 1. Logs
+        const { data: logs, error: logsError } = await supabase.from('user_logs').select('*').eq('user_id', userId);
         if (logs) {
             const db: UserDatabase = {};
             logs.forEach((log: any) => {
-                // Ensure key is a string to match Film IDs
                 const key = String(log.film_id);
-                db[key] = { 
-                    watched: log.watched, 
-                    rating: log.rating, 
-                    notes: log.notes || '' 
-                };
+                db[key] = { watched: log.watched, rating: log.rating, notes: log.notes || '' };
             });
             setUserDb(db);
-        } else if (logsError) {
-            console.error("Error fetching logs:", logsError);
         }
 
         // 2. Vault
-        const { data: vault, error: vaultError } = await supabase
-            .from('vault')
-            .select('list_id')
-            .eq('user_id', userId);
-        
+        const { data: vault, error: vaultError } = await supabase.from('vault').select('list_id').eq('user_id', userId);
         if (vault) {
             setVaultIds(vault.map((row: any) => row.list_id));
-        } else if (vaultError) {
-            console.error("Error fetching vault:", vaultError);
         }
 
-        // 3. Custom Lists (Fixing My Creations Visibility)
-        const { data: lists, error: listsError } = await supabase
-            .from('custom_lists')
-            .select('*')
-            .eq('user_id', userId);
-        
+        // 3. Custom Lists (Fix: Correct DB Read)
+        const { data: lists, error: listsError } = await supabase.from('custom_lists').select('*').eq('user_id', userId);
         if (lists) {
-            // Assuming lists are stored with properties matching CuratedList
-            setCustomLists(lists as unknown as CuratedList[]);
+            const mappedLists: CuratedList[] = lists.map((item: any) => ({
+                id: item.id,
+                title: item.title,
+                subtitle: item.subtitle,
+                description: item.description,
+                tiers: item.tiers || [], 
+                seriesTiers: item.series_tiers || [], 
+                isCustom: true,
+                status: item.status || 'draft',
+                author: profile.name, 
+                originalListId: item.original_list_id,
+                sherpaNotes: item.sherpa_notes || {}
+            }));
+            setCustomLists(mappedLists);
         }
 
         // 4. Profile
-        const { data: profileData, error: profileError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', userId)
-            .single();
-        
+        const { data: profileData, error: profileError } = await supabase.from('profiles').select('*').eq('id', userId).single();
         if (profileData) {
             setProfile({
                 name: profileData.username || "Initiate",
@@ -346,22 +332,17 @@ function App() {
 
   useEffect(() => {
     let mounted = true;
-
-    // Load custom lists from local storage as they are not yet in DB
+    // Load custom lists from local storage as backup / initial state
     const savedCustom = localStorage.getItem('virgil_custom_lists');
     if (savedCustom) setCustomLists(JSON.parse(savedCustom));
 
     const initApp = async () => {
       try {
         const { data: { session: existingSession } } = await supabase.auth.getSession();
-        
         if (mounted) {
             setSession(existingSession);
             if (existingSession) {
-                // BLOCKING: Wait for data before rendering UI to prevent race condition
                 await fetchUserData(existingSession.user.id);
-                
-                // VIEW PERSISTENCE: Restore view from localStorage if set
                 const savedView = localStorage.getItem('virgil_active_view') as 'home' | 'vault';
                 if (savedView === 'vault') setView('vault');
             }
@@ -369,7 +350,7 @@ function App() {
       } catch (e) {
         console.error("Initialization error:", e);
       } finally {
-        if (mounted) setIsLoading(false); // Unblock UI
+        if (mounted) setIsLoading(false);
       }
     };
 
@@ -378,11 +359,9 @@ function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (!mounted) return;
       setSession(newSession);
-      
       if (newSession) {
         fetchUserData(newSession.user.id);
       } else {
-        // Logout cleanup
         setUserDb({});
         setVaultIds([]);
         setProfile({ name: "Initiate", motto: "The Unwritten" });
@@ -398,7 +377,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    // Persist Custom Lists to LocalStorage
     localStorage.setItem('virgil_custom_lists', JSON.stringify(customLists));
   }, [customLists]);
 
@@ -474,16 +452,13 @@ function App() {
     if (session) {
       const { error } = await supabase.from('user_logs').upsert({
           user_id: session.user.id,
-          film_id: String(filmId), // Ensure ID is string to match DB text type if necessary
+          film_id: String(filmId), 
           watched: newLog.watched,
           rating: newLog.rating,
           notes: newLog.notes || ''
-      }, { onConflict: 'user_id, film_id' }); // Strict Upsert on Constraint
+      }, { onConflict: 'user_id, film_id' }); 
       
-      if (error) {
-          console.error('Supabase Save Error:', error);
-          alert("SAVE FAILED: " + error.message);
-      }
+      if (error) console.error('Supabase Save Error:', error);
     }
   };
 
@@ -565,25 +540,35 @@ function App() {
     setIsEditorMode(true);
   };
 
-  const handleDeleteList = (e: React.MouseEvent, listId: string) => {
-      e.stopPropagation();
-      if (window.confirm("Are you sure you want to delete this journey? This cannot be undone.")) {
-          setCustomLists(prev => prev.filter(l => l.id !== listId));
-          setVaultIds(prev => prev.filter(id => id !== listId));
-          if (selectedList?.id === listId) {
-              setSelectedList(null);
-              setIsEditorMode(false);
-          }
-      }
-  };
-
-  const handleSaveList = () => {
+  const handleSaveList = async () => {
     if (!editingList) return;
+    
     if (editingList.isCustom) {
+        // Optimistic update
         setCustomLists(prev => prev.map(l => l.id === editingList.id ? editingList : l));
+        
+        // Write to DB
+        if (session) {
+            const payload = {
+                id: editingList.id,
+                user_id: session.user.id,
+                title: editingList.title,
+                subtitle: editingList.subtitle,
+                description: editingList.description,
+                tiers: editingList.tiers, // Supabase handles JSON conversion
+                series_tiers: editingList.seriesTiers,
+                status: editingList.status || 'draft',
+                original_list_id: editingList.originalListId,
+                sherpa_notes: editingList.sherpaNotes,
+                updated_at: new Date().toISOString()
+            };
+            const { error } = await supabase.from('custom_lists').upsert(payload);
+            if (error) console.error("Error saving custom list:", error);
+        }
     } else {
         setMasterOverrides(prev => ({...prev, [editingList.id]: editingList}));
     }
+    
     setSelectedList(editingList);
     setIsEditorMode(false);
     setEditingList(null);
@@ -944,6 +929,13 @@ function App() {
                                return (
                                  <div key={list.id} onClick={() => setSelectedList(list)} className="border-4 border-black p-4 bg-[#F5C71A] text-black cursor-pointer hover:bg-black hover:text-[#F5C71A] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative transition-all group">
                                     <h3 className="font-black uppercase">{list.title}</h3>
+                                    <button 
+                                        onClick={(e) => handleToggleVault(e, list.id)} 
+                                        className="absolute top-2 right-2 text-red-500 hover:text-red-700 hover:scale-110 transition-all opacity-0 group-hover:opacity-100"
+                                        title="Remove from Vault"
+                                    >
+                                        <MinusCircle size={20} /> 
+                                    </button>
                                     <div className="mt-2 text-xs font-mono font-bold border-t border-current pt-1 flex justify-between items-center"><span>{progress}% Complete</span>{list.isCustom && (<button onClick={(e) => handleToggleVault(e, list.id)} className="text-red-600 hover:text-white hover:bg-red-600 p-1 rounded" title="Delete Journey"><Trash2 size={14} /></button>)}</div>
                                  </div>
                                );
