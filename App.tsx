@@ -314,7 +314,18 @@ function App() {
             console.error("Error fetching vault:", vaultError);
         }
 
-        // 3. Profile
+        // 3. Custom Lists (Fixing My Creations Visibility)
+        const { data: lists, error: listsError } = await supabase
+            .from('custom_lists')
+            .select('*')
+            .eq('user_id', userId);
+        
+        if (lists) {
+            // Assuming lists are stored with properties matching CuratedList
+            setCustomLists(lists as unknown as CuratedList[]);
+        }
+
+        // 4. Profile
         const { data: profileData, error: profileError } = await supabase
             .from('profiles')
             .select('*')
@@ -713,34 +724,19 @@ function App() {
       const filmId = e.dataTransfer.getData("filmId");
       const sourceTierIndex = parseInt(e.dataTransfer.getData("sourceTier"));
       const filmData = JSON.parse(e.dataTransfer.getData("filmData")) as Film;
-      
-      const targetTiersKey = viewMode === 'series' ? 'seriesTiers' : 'tiers';
-      const updatedList = { ...editingList };
-      const tiers = updatedList[targetTiersKey] || [];
-
-      // Validation
-      if (tiers[targetTierIndex].films.length >= 6 && sourceTierIndex !== targetTierIndex) { 
-          alert("Maximum 6 films allowed per tier."); 
-          return; 
-      }
-
-      const allExistingFilms = [...updatedList.tiers.flatMap(t => t.films), ...(updatedList.seriesTiers?.flatMap(t => t.films) || [])];
-      
-      if (isNaN(sourceTierIndex) && allExistingFilms.some(f => f.id === filmData.id)) { 
-          alert("Film already in list."); 
-          return; 
-      }
-
+      const allExistingFilms = [...editingList.tiers.flatMap(t => t.films), ...(editingList.seriesTiers?.flatMap(t => t.films) || [])];
+      if (editingList.tiers[targetTierIndex].films.length >= 6 && sourceTierIndex !== targetTierIndex) { alert("Maximum 6 films allowed per tier."); return; }
+      if (isNaN(sourceTierIndex) && allExistingFilms.some(f => f.id === filmData.id)) { alert("Film already in list."); return; }
       if (isNaN(sourceTierIndex)) {
-          // New Film from Bin/Search
-          tiers[targetTierIndex].films.push(filmData);
+          const updatedList = { ...editingList };
+          updatedList.tiers[targetTierIndex].films.push(filmData);
           setEditingList(updatedList);
           setAiSuggestions(prev => prev.filter(f => f.title !== filmData.title));
       } else {
-          // Reorder / Move
           if (sourceTierIndex === targetTierIndex) return;
-          tiers[sourceTierIndex].films = tiers[sourceTierIndex].films.filter(f => f.id !== filmId);
-          tiers[targetTierIndex].films.push(filmData);
+          const updatedList = { ...editingList };
+          updatedList.tiers[sourceTierIndex].films = updatedList.tiers[sourceTierIndex].films.filter(f => f.id !== filmId);
+          updatedList.tiers[targetTierIndex].films.push(filmData);
           setEditingList(updatedList);
       }
   };
@@ -1021,7 +1017,12 @@ function App() {
                     <input autoFocus type="text" placeholder="Search database or type custom..." className="w-full p-4 text-xl font-mono border-2 border-black bg-white mb-4 uppercase" value={tierSearchQuery} onChange={(e) => setTierSearchQuery(e.target.value)} />
                     <div className="max-h-60 overflow-y-auto border-2 border-black bg-white">
                        {tierSearchQuery.length > 0 && <button onClick={() => handleAddFilmToTier(createFilm(tierSearchQuery, new Date().getFullYear(), "Sherpa Selection"))} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b font-bold">+ ADD CUSTOM: "{tierSearchQuery}"</button>}
-                       {getAllFilms().filter(f => f.title.toLowerCase().includes(tierSearchQuery.toLowerCase())).map(film => (
+                       {/* Prioritize TMDB Results */}
+                       {tierSearchResults.map(film => (
+                         <button key={film.id} onClick={() => handleAddFilmToTier(film)} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b"><span className="font-bold uppercase">{film.title}</span> <span className="opacity-60 text-xs ml-2">({film.year})</span></button>
+                       ))}
+                       {/* Fallback to Local DB if no search results yet */}
+                       {tierSearchResults.length === 0 && getAllFilms().filter(f => f.title.toLowerCase().includes(tierSearchQuery.toLowerCase())).map(film => (
                          <button key={film.id} onClick={() => handleAddFilmToTier(film)} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b"><span className="font-bold uppercase">{film.title}</span></button>
                        ))}
                     </div>
