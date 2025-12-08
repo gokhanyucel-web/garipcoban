@@ -278,30 +278,55 @@ function App() {
   // --- PERSISTENCE & INIT ---
 
   const fetchUserData = async (userId: string) => {
-    // 1. Logs
-    const { data: logs } = await supabase.from('user_logs').select('*').eq('user_id', userId);
-    if (logs) {
-      const db: UserDatabase = {};
-      logs.forEach((row: any) => {
-        db[row.film_id] = { watched: row.watched, rating: row.rating, notes: row.notes };
-      });
-      setUserDb(db);
-    }
+    try {
+        // 1. Logs - The Critical Fix: Ensure we select relevant columns and MAP correctly
+        const { data: logs, error: logsError } = await supabase
+            .from('user_logs')
+            .select('film_id, watched, rating, notes')
+            .eq('user_id', userId);
 
-    // 2. Vault
-    const { data: vault } = await supabase.from('vault').select('list_id').eq('user_id', userId);
-    if (vault) {
-      setVaultIds(vault.map((row: any) => row.list_id));
-    }
+        if (logs) {
+            const db: UserDatabase = {};
+            logs.forEach((row: any) => {
+                db[row.film_id] = { 
+                    watched: row.watched, 
+                    rating: row.rating, 
+                    notes: row.notes 
+                };
+            });
+            setUserDb(db);
+        } else if (logsError) {
+            console.error("Error fetching logs:", logsError);
+        }
 
-    // 3. Profile
-    const { data: profileData } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (profileData) {
-      setProfile({
-        name: profileData.username || "Initiate",
-        motto: profileData.motto || "The Unwritten",
-        avatar: profileData.avatar_url || undefined
-      });
+        // 2. Vault
+        const { data: vault, error: vaultError } = await supabase
+            .from('vault')
+            .select('list_id')
+            .eq('user_id', userId);
+        
+        if (vault) {
+            setVaultIds(vault.map((row: any) => row.list_id));
+        } else if (vaultError) {
+            console.error("Error fetching vault:", vaultError);
+        }
+
+        // 3. Profile
+        const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .single();
+        
+        if (profileData) {
+            setProfile({
+                name: profileData.username || "Initiate",
+                motto: profileData.motto || "The Unwritten",
+                avatar: profileData.avatar_url || undefined
+            });
+        }
+    } catch (e) {
+        console.error("Critical error in fetchUserData:", e);
     }
   };
 
@@ -387,27 +412,30 @@ function App() {
   };
 
   const handleUpdateLog = async (filmId: string, updates: Partial<{ watched: boolean; rating: number }>) => {
-    // Optimistic
-    setUserDb(prev => {
-      const currentLog = prev[filmId] || { watched: false, rating: 0 };
-      const newLog = { ...currentLog, ...updates };
-      if (updates.rating && updates.rating > 0) newLog.watched = true;
-      return { ...prev, [filmId]: newLog };
-    });
+    // 1. Calculate new state immediately
+    const currentLog = userDb[filmId] || { watched: false, rating: 0 };
+    const newLog = { ...currentLog, ...updates };
+    
+    // Auto-mark watched if rated
+    if (updates.rating && updates.rating > 0) {
+        newLog.watched = true;
+    }
 
-    // Supabase
+    // 2. Optimistic Update (Immediate Feedback)
+    setUserDb(prev => ({ ...prev, [filmId]: newLog }));
+
+    // 3. Supabase Sync (Persistence)
     if (session) {
-      const currentLog = userDb[filmId] || { watched: false, rating: 0 };
-      const newLog = { ...currentLog, ...updates };
-      if (updates.rating && updates.rating > 0) newLog.watched = true;
+        // We use the 'newLog' derived above to ensure what we send matches what we showed
+        const { error } = await supabase.from('user_logs').upsert({
+            user_id: session.user.id,
+            film_id: filmId,
+            watched: newLog.watched,
+            rating: newLog.rating,
+            notes: newLog.notes || ''
+        }, { onConflict: 'user_id, film_id' }); // Ensure conflict resolution on composite key
       
-      await supabase.from('user_logs').upsert({
-          user_id: session.user.id,
-          film_id: filmId,
-          watched: newLog.watched,
-          rating: newLog.rating,
-          notes: newLog.notes || ''
-      });
+      if (error) console.error('Supabase sync error:', error);
     }
   };
 
@@ -666,8 +694,8 @@ function App() {
   // --- CALCULATIONS ---
   const getListProgress = (list: CuratedList) => {
     let allFilms: Film[] = [];
-    list.tiers.forEach(tier => allFilms.push(...tier.films));
-    if (list.seriesTiers) list.seriesTiers.forEach(tier => allFilms.push(...tier.films));
+    list.tiers.forEach(tier => { allFilms = [...allFilms, ...tier.films]; });
+    if (list.seriesTiers) { list.seriesTiers.forEach(tier => { allFilms = [...allFilms, ...tier.films]; }); }
     if (allFilms.length === 0) return 0;
     const watchedCount = allFilms.filter(film => userDb[film.id]?.watched).length;
     return Math.round((watchedCount / allFilms.length) * 100);
