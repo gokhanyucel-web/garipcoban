@@ -7,17 +7,128 @@ import FilmCard from './components/FilmCard';
 import FilmModal from './components/FilmModal';
 import { getAIListSuggestions } from './services/geminiService';
 import { getDirectorPicks, searchMovies } from './services/tmdb';
-import { Search, Twitter, Instagram, Mail, ShieldAlert, Edit2, Save, Trash2, Camera, LogOut } from 'lucide-react';
+import { Search, Twitter, Instagram, Mail, ShieldAlert, Edit2, Save, Trash2, Camera, LogOut, User } from 'lucide-react';
+
+// --- AUTH COMPONENT (Defined outside App to fix focus loss) ---
+const AuthScreen = ({ onAuth }: { onAuth: (mode: 'signin' | 'signup', data: any) => Promise<void> }) => {
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+    confirmPassword: '',
+    username: ''
+  });
+  const [loading, setLoading] = useState(false);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (mode === 'signup' && formData.password !== formData.confirmPassword) {
+      alert("Passwords do not match.");
+      return;
+    }
+    setLoading(true);
+    await onAuth(mode, formData);
+    setLoading(false);
+  };
+
+  return (
+    <div className="min-h-screen w-full bg-[#F5C71A] flex items-center justify-center p-6">
+      <div className="w-full max-w-md bg-black text-[#F5C71A] p-8 border-4 border-black shadow-[12px_12px_0px_0px_rgba(255,255,255,1)]">
+        <h1 className="text-5xl font-black uppercase text-center mb-2">VIRGIL</h1>
+        <p className="text-center font-mono text-sm opacity-60 mb-8 uppercase tracking-widest">
+          {mode === 'signin' ? 'Identify Yourself' : 'Initialize Protocol'}
+        </p>
+        
+        <div className="flex justify-center mb-6 border-b border-[#F5C71A]/30 pb-4">
+           <button 
+             onClick={() => setMode('signin')} 
+             className={`px-4 py-2 text-xs font-bold uppercase tracking-widest ${mode === 'signin' ? 'text-[#F5C71A] border-b-2 border-[#F5C71A]' : 'text-gray-500 hover:text-white'}`}
+           >
+             Enter
+           </button>
+           <button 
+             onClick={() => setMode('signup')} 
+             className={`px-4 py-2 text-xs font-bold uppercase tracking-widest ${mode === 'signup' ? 'text-[#F5C71A] border-b-2 border-[#F5C71A]' : 'text-gray-500 hover:text-white'}`}
+           >
+             Join
+           </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {mode === 'signup' && (
+            <div>
+              <label className="block text-xs font-bold uppercase mb-1">Codename (Username)</label>
+              <input 
+                name="username"
+                className="w-full p-3 bg-[#222] border-2 border-[#F5C71A] text-[#F5C71A] focus:outline-none focus:bg-[#333]" 
+                type="text" 
+                value={formData.username} 
+                onChange={handleChange} 
+                required 
+              />
+            </div>
+          )}
+          
+          <div>
+            <label className="block text-xs font-bold uppercase mb-1">Email Designation</label>
+            <input 
+              name="email"
+              className="w-full p-3 bg-[#222] border-2 border-[#F5C71A] text-[#F5C71A] focus:outline-none focus:bg-[#333]" 
+              type="email" 
+              value={formData.email} 
+              onChange={handleChange} 
+              required 
+            />
+          </div>
+          
+          <div>
+            <label className="block text-xs font-bold uppercase mb-1">Access Code</label>
+            <input 
+              name="password"
+              className="w-full p-3 bg-[#222] border-2 border-[#F5C71A] text-[#F5C71A] focus:outline-none focus:bg-[#333]" 
+              type="password" 
+              value={formData.password} 
+              onChange={handleChange} 
+              required 
+            />
+          </div>
+
+          {mode === 'signup' && (
+            <div>
+              <label className="block text-xs font-bold uppercase mb-1">Confirm Access Code</label>
+              <input 
+                name="confirmPassword"
+                className="w-full p-3 bg-[#222] border-2 border-[#F5C71A] text-[#F5C71A] focus:outline-none focus:bg-[#333]" 
+                type="password" 
+                value={formData.confirmPassword} 
+                onChange={handleChange} 
+                required 
+              />
+            </div>
+          )}
+
+          <button 
+            type="submit" 
+            disabled={loading}
+            className="w-full py-4 bg-[#F5C71A] text-black font-black uppercase tracking-widest hover:bg-white transition-colors disabled:opacity-50 mt-6"
+          >
+            {loading ? 'Processing...' : (mode === 'signin' ? 'Enter Vault' : 'Create Identity')}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
 
 function App() {
   // --- ROUTING & AUTH STATE ---
   const navigate = useNavigate();
-  const location = useLocation();
   const [session, setSession] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
 
   // --- APP STATE ---
   const [selectedList, setSelectedList] = useState<CuratedList | null>(null);
@@ -144,10 +255,16 @@ function App() {
 
   // --- HANDLERS ---
 
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (authMode === 'signup') {
-      const { error } = await supabase.auth.signUp({ email, password });
+  const handleAuth = async (mode: 'signin' | 'signup', data: any) => {
+    const { email, password, username } = data;
+    if (mode === 'signup') {
+      const { error } = await supabase.auth.signUp({ 
+        email, 
+        password,
+        options: {
+          data: { username }
+        }
+      });
       if (error) alert(error.message);
       else alert('Check your email for the login link!');
     } else {
@@ -212,9 +329,6 @@ function App() {
         setSelectedFilm(null);
     }
   };
-
-  // ... (Keep existing Editor handlers: handleForkList, handleDeleteList, handleSaveList, handleCreateListBlank, handleGenerateAndCreate, etc.)
-  // Due to length, I'm ensuring these are present and functional.
 
   const handleForkList = () => {
     if (!selectedList) return;
@@ -444,7 +558,7 @@ function App() {
       return allFilms.sort((a,b) => b.ves - a.ves).slice(0, 4);
   };
 
-  // ... (Sherpa Identity Calculation - Same as before)
+  // ... (Sherpa Identity Calculation)
   const calculateSherpaIdentity = () => {
     const watchedEntries = Object.entries(userDb).filter(([_, log]) => (log as UserFilmLog).watched) as [string, UserFilmLog][];
     const totalWatched = watchedEntries.length;
@@ -556,42 +670,26 @@ function App() {
 
   // --- SUB-COMPONENTS (Layouts) ---
 
-  const AuthView = () => (
-    <div className="min-h-screen w-full bg-[#F5C71A] flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-black text-[#F5C71A] p-8 border-4 border-black shadow-[12px_12px_0px_0px_rgba(255,255,255,1)]">
-        <h1 className="text-5xl font-black uppercase text-center mb-2">VIRGIL</h1>
-        <p className="text-center font-mono text-sm opacity-60 mb-8 uppercase tracking-widest">Identify Yourself</p>
-        <form onSubmit={handleAuth} className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold uppercase mb-1">Email Designation</label>
-            <input className="w-full p-3 bg-[#222] border-2 border-[#F5C71A] text-[#F5C71A] focus:outline-none" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
-          </div>
-          <div>
-            <label className="block text-xs font-bold uppercase mb-1">Access Code</label>
-            <input className="w-full p-3 bg-[#222] border-2 border-[#F5C71A] text-[#F5C71A] focus:outline-none" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
-          </div>
-          <button type="submit" className="w-full py-4 bg-[#F5C71A] text-black font-black uppercase tracking-widest hover:bg-white transition-colors">
-            {authMode === 'signin' ? 'Enter Vault' : 'Initialize Protocol'}
-          </button>
-        </form>
-        <div className="mt-4 text-center">
-          <button onClick={() => setAuthMode(authMode === 'signin' ? 'signup' : 'signin')} className="text-xs font-mono underline uppercase hover:text-white">
-            {authMode === 'signin' ? 'New User? Initialize' : 'Existing User? Enter'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
   const MainLayout = ({ children, activeTab }: { children: React.ReactNode, activeTab: string }) => (
     <div className="min-h-screen w-full bg-[#F5C71A] text-black font-sans selection:bg-black selection:text-[#F5C71A] flex flex-col transition-colors duration-300">
       <header className="pt-12 pb-8 text-center px-4 relative">
            <div className="absolute top-8 right-8 flex gap-4">
                {isAdmin && <span className="bg-red-600 text-white px-2 py-1 text-xs font-black uppercase border border-black animate-pulse">ADMIN MODE ACTIVE</span>}
-               {session && <button onClick={handleLogout} title="Logout" className="w-12 h-12 flex items-center justify-center border-4 border-black rounded-full hover:bg-black hover:text-[#F5C71A] transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"><LogOut size={20} /></button>}
-               <button onClick={() => setIsSearchOpen(true)} className="w-12 h-12 flex items-center justify-center border-4 border-black rounded-full hover:bg-black hover:text-[#F5C71A] transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                  <Search size={24} strokeWidth={3} />
-               </button>
+               {!session ? (
+                   <button 
+                     onClick={() => navigate('/auth')} 
+                     className="px-4 py-2 border-2 border-black font-black uppercase hover:bg-black hover:text-[#F5C71A] transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-sm flex items-center gap-2"
+                   >
+                     <User size={16} /> Sign In / Join
+                   </button>
+               ) : (
+                   <>
+                     <button onClick={handleLogout} title="Logout" className="w-12 h-12 flex items-center justify-center border-4 border-black rounded-full hover:bg-black hover:text-[#F5C71A] transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"><LogOut size={20} /></button>
+                     <button onClick={() => setIsSearchOpen(true)} className="w-12 h-12 flex items-center justify-center border-4 border-black rounded-full hover:bg-black hover:text-[#F5C71A] transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                        <Search size={24} strokeWidth={3} />
+                     </button>
+                   </>
+               )}
            </div>
 
           <h1 className="text-7xl md:text-9xl font-black tracking-tighter mb-2 uppercase leading-none cursor-pointer" onClick={() => window.location.reload()}>VIRGIL</h1>
@@ -809,7 +907,7 @@ function App() {
         {selectedFilm && !selectedList && <FilmModal film={selectedFilm} log={userDb[selectedFilm.id]} onUpdateLog={handleUpdateLog} onClose={() => setSelectedFilm(null)} onNavigateToList={handleNavigateToList} isUGC={selectedFilm.isCustomEntry} listTitle="Global Search" />}
 
       <Routes>
-        <Route path="/auth" element={session ? <Navigate to="/vault" /> : <AuthView />} />
+        <Route path="/auth" element={session ? <Navigate to="/vault" /> : <AuthScreen onAuth={handleAuth} />} />
         
         <Route path="/" element={
           <MainLayout activeTab="archive">
