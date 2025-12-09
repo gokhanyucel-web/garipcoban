@@ -18,14 +18,13 @@ interface FilmModalProps {
 }
 
 const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, onNavigateToList, sherpaNote, isEditing, onSaveNote, isUGC, listTitle }) => {
-  const [aiData, setAiData] = useState<{ analysis: string, trivia: string } | null>(null);
+  const [aiData, setAiData] = useState<{ analysis: string, trivia: string, vibes: string[] } | null>(null);
   const [loading, setLoading] = useState(false);
   const [noteContent, setNoteContent] = useState(sherpaNote || "");
-  const [featuredIn, setFeaturedIn] = useState<{id: string, title: string}[]>([]);
   const [hoverRating, setHoverRating] = useState(0);
   
   // Kesin veriler için state (TMDB)
-  const [realDetails, setRealDetails] = useState<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[], keywords: string[], recommendations: any[], tagline: string} | null>(null);
+  const [realDetails, setRealDetails] = useState<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[], keywords: string[]} | null>(null);
   const [realPoster, setRealPoster] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,7 +35,6 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
     setLoading(false);
     
     if (film) {
-      setFeaturedIn(getListsContainingFilm(film.id));
       
       // 1. TMDB'den kesin veri ve poster çek
       getRealCredits(film.title, film.year).then(data => setRealDetails(data));
@@ -55,7 +53,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
 
       // 2. Gemini'den yorum/analiz çek
       if (film.isCustomEntry) {
-         setAiData({ analysis: film.plot || "Custom entry curated by user.", trivia: "Added via Custom List." });
+         setAiData({ analysis: film.plot || "Custom entry curated by user.", trivia: "Added via Custom List.", vibes: [] });
       } else {
         setLoading(true);
         // Call AI with full context
@@ -84,6 +82,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
 
   // Right Side Data (Prioritize Real Details for facts, AI for insights)
   const displaySynopsis = realDetails?.overview || film.plot || "No details available.";
+  const displayVoteAverage = realDetails?.vote_average ? realDetails.vote_average.toFixed(1) : (film.imdbScore ? film.imdbScore.toString() : "-");
   
   const RatingBar = () => (
     <div className="flex gap-1 w-full mt-2" onMouseLeave={() => setHoverRating(0)}>
@@ -129,7 +128,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                 </div>
                 <div className="flex-1 bg-black text-[#F5C71A] border border-[#F5C71A] p-1 flex items-center justify-center gap-2">
                     <span className="opacity-70">IMDB</span>
-                    <span className="text-sm">{realDetails?.vote_average ? realDetails.vote_average.toFixed(1) : '-'}</span>
+                    <span className="text-sm">{displayVoteAverage}</span>
                 </div>
                 <div className="flex-1 bg-black text-[#F5C71A] border border-[#F5C71A] p-1 flex items-center justify-center gap-2">
                     <span className="opacity-70">LB</span>
@@ -222,15 +221,15 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     )}
                 </div>
 
-                {/* SIMILAR VIBES */}
-                {realDetails?.recommendations && realDetails.recommendations.length > 0 && (
+                {/* AI VIBES (CURATOR RECOMMENDS) */}
+                {aiData?.vibes && aiData.vibes.length > 0 && (
                     <div className="pt-6 border-t-4 border-black">
-                        <h3 className="font-black text-lg mb-4 uppercase">Similar Vibes</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            {realDetails.recommendations.map(r => (
-                                <div key={r.id} className="relative group cursor-pointer border-2 border-black" title={r.title}>
-                                    {r.posterUrl ? <img src={r.posterUrl} className="w-full h-32 object-cover grayscale group-hover:grayscale-0 transition-all" /> : <div className="w-full h-32 bg-black/10 flex items-center justify-center text-xs font-bold p-2 text-center">{r.title}</div>}
-                                    <div className="absolute bottom-0 left-0 w-full bg-black/80 text-[#F5C71A] text-[9px] p-1 font-bold uppercase truncate">{r.title}</div>
+                        <h3 className="font-black text-lg mb-4 uppercase">Curator Recommends (Vibes)</h3>
+                        <div className="flex flex-col gap-2">
+                            {aiData.vibes.map((vibe, idx) => (
+                                <div key={idx} className="flex items-center gap-3 border-2 border-transparent hover:border-black p-2 transition-all cursor-default">
+                                    <div className="w-2 h-2 bg-black"></div>
+                                    <span className="font-bold uppercase text-lg">{vibe}</span>
                                 </div>
                             ))}
                         </div>

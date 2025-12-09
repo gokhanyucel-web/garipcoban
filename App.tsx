@@ -1,12 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './services/supabase';
-import { Film, CuratedList, UserDatabase, UserFilmLog, Tier, Badge, AI_Suggestion, SortOption } from './types';
+import { Film, CuratedList, UserDatabase, UserFilmLog, Tier, Badge, AI_Suggestion, SortOption, ListCategory } from './types';
 import { ARCHIVE_CATEGORIES, getAllFilms, createFilm, BADGE_TITLES, getHash, INITIATE_SYNONYMS, ADEPT_SYNONYMS } from './constants';
 import FilmCard from './components/FilmCard';
 import FilmModal from './components/FilmModal';
 import { getAIListSuggestions } from './services/geminiService';
 import { getDirectorPicks, searchMovies } from './services/tmdb';
 import { Search, Twitter, Instagram, Mail, ShieldAlert, Save, Trash2, LogOut, User, MinusCircle, Check } from 'lucide-react';
+
+// --- CONSTANTS REORDERING ---
+// Directors -> Movements -> Genres -> Thematic (mapped as Eras/Thematic)
+const ORDERED_CATEGORIES: ListCategory[] = [
+    ARCHIVE_CATEGORIES.find(c => c.title === "THE GRANDMASTERS")!,
+    ARCHIVE_CATEGORIES.find(c => c.title === "MOVEMENTS & WORLD")!,
+    ARCHIVE_CATEGORIES.find(c => c.title === "GENRES & UNIVERSES")!,
+    // Rename "THEMATIC" to "DECADE DIARIES & THEMES" visually in render, or keep as is if sticking to constants
+    ARCHIVE_CATEGORIES.find(c => c.title === "THEMATIC")!
+];
 
 // --- STATIC COMPONENTS ---
 
@@ -558,49 +568,64 @@ function App() {
   const handleSaveList = async () => {
     if (!editingList) return;
     
-    if (editingList.isCustom) {
-        // Optimistic update
-        setCustomLists(prev => prev.map(l => l.id === editingList.id ? editingList : l));
+    // CRITICAL: Remix Logic Fix
+    // If editing a master list AND NOT ADMIN, force create new custom list
+    // OR if editing a master list AND ADMIN, but explicitly want to fork/remix
+    // We treat it as custom if it was already custom OR if we are forcing a fork
+    
+    let listToSave = { ...editingList };
+    let isNewRemix = false;
+
+    // If we are editing a master list source (isCustom is false), we MUST convert it to a custom list unless we are explicitly in Admin Override mode.
+    // However, the UI logic sets isEditorMode only.
+    // Safety check: If isAdmin is false, we NEVER overwrite master.
+    // If isAdmin is true, we assume they might want to overwrite if they didn't explicitly Fork.
+    // BUT, the `handleForkList` already handles creating the copy structure.
+    // The issue is if `editingList` ID still points to a master list ID.
+    
+    // If the list ID is a known master list ID (not starting with 'custom_'), we must check permissions.
+    if (!listToSave.id.startsWith('custom_')) {
+        if (!isAdmin) {
+            // Should not happen via UI, but safety first
+            console.error("Unauthorized attempt to save master list");
+            return;
+        }
+        // Admin saving master list
+        setMasterOverrides(prev => ({...prev, [listToSave.id]: listToSave}));
+        if (session) {
+             const payload = {
+                 list_id: listToSave.id,
+                 content: listToSave,
+                 updated_at: new Date().toISOString()
+             };
+             await supabase.from('master_overrides').upsert(payload, { onConflict: 'list_id' });
+        }
+    } else {
+        // Saving a Custom List (Draft/Published/Remix)
+        setCustomLists(prev => prev.map(l => l.id === listToSave.id ? listToSave : l));
         
-        // Write to DB with robust JSONB content column
         if (session) {
             const payload = {
-                id: editingList.id,
+                id: listToSave.id,
                 user_id: session.user.id,
-                title: editingList.title,
-                status: editingList.status || 'draft',
-                // Pack complex objects into content JSONB for persistence
+                title: listToSave.title,
+                status: listToSave.status || 'draft',
                 content: {
-                    subtitle: editingList.subtitle,
-                    description: editingList.description,
-                    tiers: editingList.tiers,
-                    seriesTiers: editingList.seriesTiers,
-                    originalListId: editingList.originalListId,
-                    sherpaNotes: editingList.sherpaNotes
+                    subtitle: listToSave.subtitle,
+                    description: listToSave.description,
+                    tiers: listToSave.tiers,
+                    seriesTiers: listToSave.seriesTiers,
+                    originalListId: listToSave.originalListId,
+                    sherpaNotes: listToSave.sherpaNotes
                 },
                 updated_at: new Date().toISOString()
             };
             const { error } = await supabase.from('custom_lists').upsert(payload);
             if (error) console.error("Error saving custom list:", error);
         }
-    } else {
-        // Admin Master Override Save
-        if (isAdmin && session) {
-             setMasterOverrides(prev => ({...prev, [editingList.id]: editingList}));
-             
-             const payload = {
-                 list_id: editingList.id,
-                 content: editingList, // Store the modified list object
-                 updated_at: new Date().toISOString()
-             };
-             // Upsert to master_overrides table
-             await supabase.from('master_overrides').upsert(payload, { onConflict: 'list_id' });
-        } else {
-             setMasterOverrides(prev => ({...prev, [editingList.id]: editingList}));
-        }
     }
     
-    setSelectedList(editingList);
+    setSelectedList(listToSave);
     setIsEditorMode(false);
     setEditingList(null);
     setAiSuggestions([]);
@@ -667,9 +692,11 @@ function App() {
     if (!editingList) return;
     const newStatus = editingList.status === 'published' ? 'draft' : 'published';
     const updatedList = { ...editingList, status: newStatus };
+    
+    // Immediate Local Update for editing state
     setEditingList(updatedList);
     
-    // Immediate Local Update
+    // CRITICAL: Immutable update to the main list state so tabs update immediately
     setCustomLists(prev => prev.map(l => l.id === updatedList.id ? updatedList : l));
 
     // Supabase Update
@@ -918,12 +945,13 @@ function App() {
             {/* VIEW: ARCHIVE (HOME) */}
             {view === 'home' && (
                <div className="animate-fadeIn">
-                  {ARCHIVE_CATEGORIES.map((category) => {
+                  {ORDERED_CATEGORIES.map((category) => {
+                     if (!category) return null;
                      const isExpanded = expandedCategories[category.title];
                      const visibleLists = isExpanded ? category.lists : category.lists.slice(0, 8);
                      return (
                          <section key={category.title} className="space-y-6 mb-12">
-                            <div className="flex items-center gap-4"><div className="h-6 w-6 bg-black"></div><h2 className="text-2xl md:text-3xl font-black uppercase tracking-widest border-b-4 border-black pb-2 w-full">{category.title}</h2></div>
+                            <div className="flex items-center gap-4"><div className="h-6 w-6 bg-black"></div><h2 className="text-2xl md:text-3xl font-black uppercase tracking-widest border-b-4 border-black pb-2 w-full">{category.title === "THEMATIC" ? "DECADE DIARIES & THEMES" : category.title}</h2></div>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                               {visibleLists.map((originalList) => {
                                 const list = masterOverrides[originalList.id] || originalList;

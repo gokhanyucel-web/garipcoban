@@ -1,10 +1,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { AI_Suggestion } from '../types';
+import { AI_Suggestion, FilmAnalysis } from '../types';
 
 // Interface for the curator analysis result
 interface AIAnalysisResult {
   analysis: string;
   trivia: string;
+  vibes: string[];
 }
 
 export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion[]> => {
@@ -61,7 +62,8 @@ export const getFilmAnalysis = async (title: string, director: string, year: num
       contents: `Analyze the film "${title}" (${year}) directed by ${director}.
       
       1. analysis: Write a 2-sentence cultural analysis explaining its significance, directorial style, or impact on cinema history. Be intellectual but accessible. NO marketing language.
-      2. trivia: Provide one fascinating, obscure production fact or trivia about the film.`,
+      2. trivia: Provide one fascinating, obscure production fact or trivia about the film.
+      3. vibes: List exactly 3 other film titles that share the exact specific mood, atmosphere, or thematic resonance. Do not include this film itself.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -69,8 +71,9 @@ export const getFilmAnalysis = async (title: string, director: string, year: num
           properties: {
             analysis: { type: Type.STRING },
             trivia: { type: Type.STRING },
+            vibes: { type: Type.ARRAY, items: { type: Type.STRING } }
           },
-          required: ["analysis", "trivia"],
+          required: ["analysis", "trivia", "vibes"],
         }
       }
     });
