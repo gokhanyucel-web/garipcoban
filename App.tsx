@@ -368,6 +368,7 @@ function App() {
       } else {
         setUserDb({});
         setVaultIds([]);
+        setCustomLists([]); // Clear custom lists on logout
         setProfile({ name: "Initiate", motto: "The Unwritten" });
         setView('home');
         localStorage.removeItem('virgil_active_view');
@@ -582,7 +583,7 @@ function App() {
     setAiSuggestions([]);
   };
 
-  const handleCreateListBlank = () => {
+  const handleCreateList = () => {
       const newId = `custom_${Date.now()}`;
       const newList: CuratedList = {
           id: newId,
@@ -940,7 +941,7 @@ function App() {
                        </div>
                        <div className="flex-1 p-8 flex flex-col justify-center relative">
                            <div className="mb-8"><span className="text-[10px] font-mono uppercase tracking-[0.4em] opacity-60 bg-[#F5C71A] text-black px-2 py-1">Identity Archetype</span><h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter leading-none mt-2">{sherpaIdentity.fullTitle}</h2><p className="font-mono text-sm opacity-60 mt-2 max-w-md">"{profile.motto || "Cinema is truth 24 times a second."}"</p></div>
-                           <div className="flex gap-8 border-t-2 border-dashed border-[#F5C71A]/30 pt-6"><div className="flex flex-col"><span className="text-3xl font-mono font-bold">{sherpaIdentity.totalWatched}</span><span className="text-[9px] uppercase tracking-wider opacity-60">Films Logged</span></div><div className="flex flex-col"><span className="text-3xl font-mono font-bold">{sherpaIdentity.totalHours}</span><span className="text-[9px] uppercase tracking-wider opacity-60">Hours</span></div><div className="flex flex-col"><span className="text-3xl font-mono font-bold">{active.length + completed.length}</span><span className="text-[9px] uppercase tracking-wider opacity-60">Total Journeys</span></div></div>
+                           <div className="flex gap-8 border-t-2 border-dashed border-[#F5C71A]/30 pt-6"><div className="flex flex-col"><span className="text-3xl font-mono font-bold">{sherpaIdentity.totalWatched}</span><span className="text-[9px] uppercase tracking-wider opacity-60">Films Logged</span></div><div className="flex flex-col"><span className="text-3xl font-mono font-bold">{sherpaIdentity.totalHours}</span><span className="text-[9px] uppercase tracking-wider opacity-60">HOURS WATCHED</span></div><div className="flex flex-col"><span className="text-3xl font-mono font-bold">{sherpaIdentity.totalCompleted}</span><span className="text-[9px] uppercase tracking-wider opacity-60">JOURNEYS COMPLETED</span></div></div>
                        </div>
                     </div>
 
@@ -990,6 +991,32 @@ function App() {
                           <button onClick={() => setIsAICreatorOpen(true)} className="bg-black text-[#F5C71A] px-4 py-2 font-black uppercase text-sm hover:scale-105 transition-transform">+ Create Journey</button>
                        </div>
                        
+                       {isAICreatorOpen && (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
+                                <div className="w-full max-w-2xl bg-[#F5C71A] border-4 border-black p-8 shadow-[12px_12px_0px_0px_#fff]">
+                                    <h2 className="text-3xl font-black uppercase mb-4">Create New Journey</h2>
+                                    <p className="font-mono mb-4 text-sm">Enter a director, genre, or theme. Virgil will fetch director picks from TMDB or consult the AI archives.</p>
+                                    <input 
+                                        type="text" 
+                                        placeholder="e.g. Christopher Nolan, 90s Cyberpunk..." 
+                                        className="w-full p-4 text-xl font-bold uppercase border-2 border-black mb-4 focus:outline-none"
+                                        value={aiCreatorQuery}
+                                        onChange={(e) => setAiCreatorQuery(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleGenerateAndCreate()}
+                                    />
+                                    <div className="flex gap-4">
+                                        <button onClick={handleGenerateAndCreate} disabled={isGeneratingAI} className="flex-1 bg-black text-[#F5C71A] py-3 font-black uppercase hover:opacity-80 disabled:opacity-50">
+                                            {isGeneratingAI ? "Consulting Archives..." : "Start & Generate"}
+                                        </button>
+                                        <button onClick={handleCreateList} className="flex-1 bg-white text-black border-2 border-black py-3 font-black uppercase hover:bg-gray-100">
+                                            Start Blank
+                                        </button>
+                                        <button onClick={() => setIsAICreatorOpen(false)} className="px-4 py-3 font-bold uppercase underline">Cancel</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                           <div className="flex flex-col gap-4">
                               <h3 className="font-bold font-mono uppercase opacity-70 border-b border-black">Drafts (Work in Progress)</h3>
@@ -1060,11 +1087,23 @@ function App() {
                        {tierSearchQuery.length > 0 && <button onClick={() => handleAddFilmToTier(createFilm(tierSearchQuery, new Date().getFullYear(), "Sherpa Selection"))} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b font-bold">+ ADD CUSTOM: "{tierSearchQuery}"</button>}
                        {/* Prioritize TMDB Results */}
                        {tierSearchResults.map(film => (
-                         <button key={film.id} onClick={() => handleAddFilmToTier(film)} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b"><span className="font-bold uppercase">{film.title}</span> <span className="opacity-60 text-xs ml-2">({film.year})</span></button>
+                         <button key={film.id} onClick={() => handleAddFilmToTier(film)} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b flex items-center gap-4">
+                            {film.posterUrl && <img src={film.posterUrl} className="w-10 h-14 object-cover border border-black" />}
+                            <div>
+                                <span className="font-bold uppercase block">{film.title}</span> 
+                                <span className="opacity-60 text-xs">({film.year})</span>
+                            </div>
+                         </button>
                        ))}
                        {/* Fallback to Local DB if no search results yet */}
                        {tierSearchResults.length === 0 && getAllFilms().filter(f => f.title.toLowerCase().includes(tierSearchQuery.toLowerCase())).map(film => (
-                         <button key={film.id} onClick={() => handleAddFilmToTier(film)} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b"><span className="font-bold uppercase">{film.title}</span></button>
+                         <button key={film.id} onClick={() => handleAddFilmToTier(film)} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b flex items-center gap-4">
+                            {film.posterUrl && <img src={film.posterUrl} className="w-10 h-14 object-cover border border-black" />}
+                            <div>
+                                <span className="font-bold uppercase block">{film.title}</span> 
+                                <span className="opacity-60 text-xs">({film.year})</span>
+                            </div>
+                         </button>
                        ))}
                     </div>
                     <button onClick={() => setShowTierSearchModal(null)} className="mt-4 text-sm underline uppercase font-bold">Cancel</button>

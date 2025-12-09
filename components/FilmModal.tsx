@@ -25,18 +25,8 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   const [hoverRating, setHoverRating] = useState(0);
   
   // Kesin veriler için state
-  const [realDetails, setRealDetails] = useState<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[], keywords: string[], recommendations: any[]} | null>(null);
+  const [realDetails, setRealDetails] = useState<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[], keywords: string[], recommendations: any[], tagline: string} | null>(null);
   const [realPoster, setRealPoster] = useState<string | null>(null);
-
-  // Recommendation Click Handling: Re-mount logic by changing the film passed to modal? 
-  // Ideally, app state should handle this, but for now we can fetch details for clicked recommendation within the modal or update parent
-  // BUT the parent passes the film. Let's make this modal display "Similar Vibes" that are purely visual or simple links if possible.
-  // Actually, we can update the film prop by calling a callback? No, props are read-only.
-  // We will assume "Similar Vibes" are just for discovery context for now, or if clickable, they open in a new search.
-  
-  // Actually, we can just use the same modal state in parent if we passed a "onSelectFilm" prop.
-  // But current props are onClose.
-  // Let's keep it simple: Just display them.
 
   useEffect(() => {
     setNoteContent(sherpaNote || "");
@@ -90,6 +80,9 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   // Right Side Data (Prioritize Real Details for facts, Analysis for flair)
   const displaySynopsis = realDetails?.overview || analysis?.summary || film.plot || "No details available.";
   const displayVoteAverage = realDetails?.vote_average ? realDetails.vote_average.toFixed(1) : (film.imdbScore ? film.imdbScore.toString() : "-");
+  
+  // Use Tagline if available, otherwise AI significance, otherwise default
+  const displayWhy = realDetails?.tagline ? `"${realDetails.tagline}"` : (analysis?.significance || "A significant entry in cinema history.");
 
   const RatingBar = () => (
     <div className="flex gap-1 w-full mt-2" onMouseLeave={() => setHoverRating(0)}>
@@ -210,24 +203,12 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     </p>
                 </div>
 
-                {/* KEYWORDS / TRIVIA */}
-                {realDetails?.keywords && realDetails.keywords.length > 0 && (
-                    <div>
-                        <h3 className="font-black text-xs mb-2 uppercase tracking-widest opacity-60">Keywords / Vibe</h3>
-                        <div className="flex flex-wrap gap-2">
-                            {realDetails.keywords.map(k => (
-                                <span key={k} className="px-2 py-1 border border-black text-[10px] font-bold uppercase hover:bg-black hover:text-[#F5C71A] cursor-default">#{k}</span>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
                 {/* SIGNIFICANCE / ANALYSIS */}
                 <div className="flex flex-col gap-4">
                     <div>
                         <h3 className="font-black text-lg mb-2 uppercase">Why This Film?</h3>
-                        <p className="text-lg">
-                            {analysis ? analysis.significance : (loading ? "Consulting Archives..." : "A significant entry in cinema history.")}
+                        <p className="text-lg italic font-medium">
+                            {displayWhy}
                         </p>
                     </div>
                     {analysis?.funFact && (
@@ -248,6 +229,18 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                                     {r.posterUrl ? <img src={r.posterUrl} className="w-full h-32 object-cover grayscale group-hover:grayscale-0 transition-all" /> : <div className="w-full h-32 bg-black/10 flex items-center justify-center text-xs font-bold p-2 text-center">{r.title}</div>}
                                     <div className="absolute bottom-0 left-0 w-full bg-black/80 text-[#F5C71A] text-[9px] p-1 font-bold uppercase truncate">{r.title}</div>
                                 </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* KEYWORDS / TRIVIA (MOVED TO BOTTOM) */}
+                {realDetails?.keywords && realDetails.keywords.length > 0 && (
+                    <div className="mt-4 pt-4 border-t-2 border-black/20">
+                        <h3 className="font-black text-xs mb-2 uppercase tracking-widest opacity-60">Keywords / Vibe</h3>
+                        <div className="flex flex-wrap gap-2">
+                            {realDetails.keywords.map(k => (
+                                <span key={k} className="px-2 py-1 border border-black text-[10px] font-bold uppercase hover:bg-black hover:text-[#F5C71A] cursor-default">#{k}</span>
                             ))}
                         </div>
                     </div>

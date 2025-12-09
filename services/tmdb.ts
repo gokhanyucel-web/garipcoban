@@ -42,7 +42,7 @@ export const getRealPoster = async (title: string, year: number): Promise<string
   return null;
 };
 
-export const getRealCredits = async (title: string, year: number): Promise<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[], keywords: string[], recommendations: any[]} | null> => {
+export const getRealCredits = async (title: string, year: number): Promise<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[], keywords: string[], recommendations: any[], tagline: string} | null> => {
     if (!API_KEY) return null;
     const cacheKey = `${title}-${year}-credits-full`;
     if (creditsCache[cacheKey]) return creditsCache[cacheKey];
@@ -78,6 +78,7 @@ export const getRealCredits = async (title: string, year: number): Promise<{dire
             const runtime = data.runtime || 0;
             const overview = data.overview || "";
             const vote_average = data.vote_average || 0;
+            const tagline = data.tagline || "";
             
             const keywords = data.keywords?.keywords?.map((k: any) => k.name).slice(0, 5) || [];
             const recommendations = data.recommendations?.results?.slice(0, 4).map((r: any) => ({
@@ -87,7 +88,7 @@ export const getRealCredits = async (title: string, year: number): Promise<{dire
                 posterUrl: r.poster_path ? `${IMAGE_BASE_URL}${r.poster_path}` : undefined
             })) || [];
 
-            const result = { director, cast, runtime, screenplay, music, overview, vote_average, dop, keywords, recommendations };
+            const result = { director, cast, runtime, screenplay, music, overview, vote_average, dop, keywords, recommendations, tagline };
             creditsCache[cacheKey] = result;
             return result;
         }
