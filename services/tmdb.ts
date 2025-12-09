@@ -158,15 +158,11 @@ export const searchMovies = async (query: string): Promise<Film[]> => {
             const year = releaseDate ? parseInt(releaseDate) : 0;
             const poster = m.poster_path ? `${IMAGE_BASE_URL}${m.poster_path}` : undefined;
             
-            // Create base film object using the helper
-            // We use "Unknown" for director initially as search results don't provide crew.
             const film = createFilm(m.title, year, "Unknown", poster);
             
-            // Enrich with details available in search result
             film.plot = m.overview;
             film.imdbScore = m.vote_average;
             
-            // Append TMDB ID to internal slug to ensure uniqueness in search lists
             film.id = `${film.id}-${m.id}`;
             
             return film;

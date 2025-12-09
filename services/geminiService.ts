@@ -48,7 +48,7 @@ export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion
   }
 };
 
-export const getFilmAnalysis = async (title: string): Promise<FilmAnalysis | null> => {
+export const getFilmAnalysis = async (title: string, director: string, year: number): Promise<FilmAnalysis | null> => {
   try {
     const apiKey = process.env.API_KEY;
     if (!apiKey) return null;
@@ -56,9 +56,9 @@ export const getFilmAnalysis = async (title: string): Promise<FilmAnalysis | nul
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: `Analyze the film "${title}".
-      1. Summary: Provide a one-sentence logline focusing ONLY on the setup or inciting incident. Do not reveal the ending or the main turn of events.
-      2. Significance: Why does it matter cinematically?
+      contents: `Analyze the film "${title}" (${year}) directed by ${director}.
+      1. Summary: Provide a one-sentence logline focusing on the premise.
+      2. Significance: Write a short, punchy, 2-sentence curator note explaining why this film is culturally significant or essential. Focus on its impact on the genre or cinema history. No spoilers. Tone: Knowledgeable Cinephile.
       3. Fun Fact: One rare production fact.
       Also verify director, year and top cast.`,
       config: {

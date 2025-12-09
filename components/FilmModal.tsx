@@ -33,6 +33,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
     setRealDetails(null);
     setRealPoster(null);
     setAnalysis(null);
+    setLoading(false);
     
     if (film) {
       setFeaturedIn(getListsContainingFilm(film.id));
@@ -57,7 +58,11 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
          setAnalysis({ summary: film.plot || "Custom entry.", significance: "User curated.", funFact: "-", director: film.director, cast: film.cast || [], year: film.year });
       } else {
         setLoading(true);
-        getFilmAnalysis(film.title).then(data => { setAnalysis(data); setLoading(false); });
+        // Call AI with full context for better results
+        getFilmAnalysis(film.title, film.director, film.year).then(data => { 
+            setAnalysis(data); 
+            setLoading(false); 
+        });
       }
     }
   }, [film]);
@@ -81,8 +86,8 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   const displaySynopsis = realDetails?.overview || analysis?.summary || film.plot || "No details available.";
   const displayVoteAverage = realDetails?.vote_average ? realDetails.vote_average.toFixed(1) : (film.imdbScore ? film.imdbScore.toString() : "-");
   
-  // Use Tagline if available, otherwise AI significance, otherwise default
-  const displayWhy = realDetails?.tagline ? `"${realDetails.tagline}"` : (analysis?.significance || "A significant entry in cinema history.");
+  // Use AI Significance (Curator Note) if available, otherwise Tagline, otherwise default
+  const displayWhy = loading ? "Consulting Archives..." : (analysis?.significance || realDetails?.tagline || "A significant entry in cinema history.");
 
   const RatingBar = () => (
     <div className="flex gap-1 w-full mt-2" onMouseLeave={() => setHoverRating(0)}>
@@ -183,6 +188,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
               <div className="flex justify-between items-end">
                 <div className="flex gap-4">
                      <p className="text-xl font-mono font-bold">YEAR: {film.year}</p>
+                     <p className="text-xl font-mono font-bold opacity-60">RATING: {displayVoteAverage}/10</p>
                 </div>
                 {listTitle && <p className="text-xs font-mono opacity-60 uppercase">Context: {listTitle}</p>}
               </div>
@@ -207,7 +213,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                 <div className="flex flex-col gap-4">
                     <div>
                         <h3 className="font-black text-lg mb-2 uppercase">Why This Film?</h3>
-                        <p className="text-lg italic font-medium">
+                        <p className={`text-lg italic font-medium ${loading ? 'opacity-50 animate-pulse' : ''}`}>
                             {displayWhy}
                         </p>
                     </div>
@@ -237,7 +243,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                 {/* KEYWORDS / TRIVIA (MOVED TO BOTTOM) */}
                 {realDetails?.keywords && realDetails.keywords.length > 0 && (
                     <div className="mt-4 pt-4 border-t-2 border-black/20">
-                        <h3 className="font-black text-xs mb-2 uppercase tracking-widest opacity-60">Keywords / Vibe</h3>
+                        <h3 className="font-black text-xs mb-2 uppercase tracking-widest opacity-60">TRIVIA / VIBE</h3>
                         <div className="flex flex-wrap gap-2">
                             {realDetails.keywords.map(k => (
                                 <span key={k} className="px-2 py-1 border border-black text-[10px] font-bold uppercase hover:bg-black hover:text-[#F5C71A] cursor-default">#{k}</span>

@@ -774,6 +774,16 @@ function App() {
         l.seriesTiers?.forEach(t => t.films.forEach(f => allFilmsMap.set(f.id, f)));
     });
 
+    // 3. Count Completed Journeys (Archive + Custom)
+    const allLists = [...ARCHIVE_CATEGORIES.flatMap(c => c.lists).map(l => masterOverrides[l.id] || l), ...customLists];
+    let totalCompleted = 0;
+    allLists.forEach(list => {
+        // Only count lists saved in vault or created by user, and fully watched
+        if ((vaultIds.includes(list.id) || list.isCustom) && getListProgress(list) >= 100) {
+            totalCompleted++;
+        }
+    });
+
     let totalRuntime = 0;
     watchedEntries.forEach(([filmId]) => {
         const film = allFilmsMap.get(filmId);
@@ -787,7 +797,7 @@ function App() {
     let rank = "INITIATE";
     if (totalWatched > 10) rank = "ADEPT";
     if (totalWatched > 50) rank = "MASTER";
-    return { totalWatched, fullTitle: `${rank} EXPLORER`, totalCompleted: 0, totalHours };
+    return { totalWatched, fullTitle: `${rank} EXPLORER`, totalCompleted, totalHours };
   };
   const sherpaIdentity = calculateSherpaIdentity();
 
@@ -991,32 +1001,6 @@ function App() {
                           <button onClick={() => setIsAICreatorOpen(true)} className="bg-black text-[#F5C71A] px-4 py-2 font-black uppercase text-sm hover:scale-105 transition-transform">+ Create Journey</button>
                        </div>
                        
-                       {isAICreatorOpen && (
-                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
-                                <div className="w-full max-w-2xl bg-[#F5C71A] border-4 border-black p-8 shadow-[12px_12px_0px_0px_#fff]">
-                                    <h2 className="text-3xl font-black uppercase mb-4">Create New Journey</h2>
-                                    <p className="font-mono mb-4 text-sm">Enter a director, genre, or theme. Virgil will fetch director picks from TMDB or consult the AI archives.</p>
-                                    <input 
-                                        type="text" 
-                                        placeholder="e.g. Christopher Nolan, 90s Cyberpunk..." 
-                                        className="w-full p-4 text-xl font-bold uppercase border-2 border-black mb-4 focus:outline-none"
-                                        value={aiCreatorQuery}
-                                        onChange={(e) => setAiCreatorQuery(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleGenerateAndCreate()}
-                                    />
-                                    <div className="flex gap-4">
-                                        <button onClick={handleGenerateAndCreate} disabled={isGeneratingAI} className="flex-1 bg-black text-[#F5C71A] py-3 font-black uppercase hover:opacity-80 disabled:opacity-50">
-                                            {isGeneratingAI ? "Consulting Archives..." : "Start & Generate"}
-                                        </button>
-                                        <button onClick={handleCreateList} className="flex-1 bg-white text-black border-2 border-black py-3 font-black uppercase hover:bg-gray-100">
-                                            Start Blank
-                                        </button>
-                                        <button onClick={() => setIsAICreatorOpen(false)} className="px-4 py-3 font-bold uppercase underline">Cancel</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                           <div className="flex flex-col gap-4">
                               <h3 className="font-bold font-mono uppercase opacity-70 border-b border-black">Drafts (Work in Progress)</h3>
