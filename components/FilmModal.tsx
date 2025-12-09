@@ -55,7 +55,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
 
       // 2. Gemini'den yorum/analiz çek
       if (film.isCustomEntry) {
-         setAiData({ analysis: film.plot || "Custom entry.", trivia: "Curated by user." });
+         setAiData({ analysis: film.plot || "Custom entry curated by user.", trivia: "Added via Custom List." });
       } else {
         setLoading(true);
         // Call AI with full context
@@ -84,7 +84,6 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
 
   // Right Side Data (Prioritize Real Details for facts, AI for insights)
   const displaySynopsis = realDetails?.overview || film.plot || "No details available.";
-  const displayVoteAverage = realDetails?.vote_average ? realDetails.vote_average.toFixed(1) : (film.imdbScore ? film.imdbScore.toString() : "-");
   
   const RatingBar = () => (
     <div className="flex gap-1 w-full mt-2" onMouseLeave={() => setHoverRating(0)}>
@@ -130,7 +129,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                 </div>
                 <div className="flex-1 bg-black text-[#F5C71A] border border-[#F5C71A] p-1 flex items-center justify-center gap-2">
                     <span className="opacity-70">IMDB</span>
-                    <span className="text-sm">{displayVoteAverage}</span>
+                    <span className="text-sm">{realDetails?.vote_average ? realDetails.vote_average.toFixed(1) : '-'}</span>
                 </div>
                 <div className="flex-1 bg-black text-[#F5C71A] border border-[#F5C71A] p-1 flex items-center justify-center gap-2">
                     <span className="opacity-70">LB</span>
@@ -205,20 +204,20 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     </p>
                 </div>
 
-                {/* AI ANALYSIS */}
+                {/* AI ANALYSIS & TRIVIA */}
                 <div className="flex flex-col gap-4">
                     <div>
                         <h3 className="font-black text-lg mb-2 uppercase">Why This Film?</h3>
                         <p className={`text-lg italic font-medium ${loading ? 'opacity-50 animate-pulse' : ''}`}>
-                            {loading ? "Consulting Archives..." : (aiData?.analysis || realDetails?.tagline || "A significant entry in cinema history.")}
+                            {loading ? "Consulting Archives..." : (aiData?.analysis || "Analysis unavailable.")}
                         </p>
                     </div>
                     
                     {/* TRIVIA BOX */}
-                    {(aiData?.trivia) && (
+                    {(aiData?.trivia || loading) && (
                         <div className="bg-black/5 p-4 border-2 border-black/10 border-dashed">
                             <h3 className="font-black text-xs mb-1 uppercase">★ Trivia</h3>
-                            <p className="text-sm font-mono opacity-80">{aiData.trivia}</p>
+                            <p className={`text-sm font-mono opacity-80 ${loading ? 'animate-pulse' : ''}`}>{loading ? "Retrieving classified data..." : aiData?.trivia}</p>
                         </div>
                     )}
                 </div>
@@ -238,10 +237,10 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     </div>
                 )}
 
-                {/* KEYWORDS / THEME / VIBE (MOVED TO BOTTOM) */}
+                {/* THEMES (KEYWORDS) */}
                 {realDetails?.keywords && realDetails.keywords.length > 0 && (
                     <div className="mt-4 pt-4 border-t-2 border-black/20">
-                        <h3 className="font-black text-xs mb-2 uppercase tracking-widest opacity-60">THEME / VIBE</h3>
+                        <h3 className="font-black text-xs mb-2 uppercase tracking-widest opacity-60">THEMES</h3>
                         <div className="flex flex-wrap gap-2">
                             {realDetails.keywords.map(k => (
                                 <span key={k} className="px-2 py-1 border border-black text-[10px] font-bold uppercase hover:bg-black hover:text-[#F5C71A] cursor-default">#{k}</span>

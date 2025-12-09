@@ -1,8 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { AI_Suggestion, FilmAnalysis } from '../types';
+import { AI_Suggestion } from '../types';
 
-// Update interface locally if types.ts cannot be changed easily in this context, 
-// or cast result. Ideally FilmAnalysis in types.ts should match, but we can cast.
+// Interface for the curator analysis result
 interface AIAnalysisResult {
   analysis: string;
   trivia: string;
@@ -13,11 +12,7 @@ export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion
     const apiKey = process.env.API_KEY;
     if (!apiKey) {
       console.warn("API Key not found in environment variables.");
-      return [
-        { title: "Mock Film 1", year: 2024, director: "AI Director" },
-        { title: "Mock Film 2", year: 2023, director: "AI Director" },
-        { title: "Mock Film 3", year: 2022, director: "AI Director" }
-      ];
+      return [];
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -63,10 +58,10 @@ export const getFilmAnalysis = async (title: string, director: string, year: num
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: `Act as a film curator. Return a JSON object with two fields for the film "${title}" (${year}) directed by ${director}:
-
-      1. analysis: A 2-sentence cultural analysis of why '${title}' is significant. NO marketing taglines. Intellectual but accessible tone.
-      2. trivia: One fascinating, obscure production fact or trivia about the film.`,
+      contents: `Analyze the film "${title}" (${year}) directed by ${director}.
+      
+      1. analysis: Write a 2-sentence cultural analysis explaining its significance, directorial style, or impact on cinema history. Be intellectual but accessible. NO marketing language.
+      2. trivia: Provide one fascinating, obscure production fact or trivia about the film.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {

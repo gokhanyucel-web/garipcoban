@@ -301,20 +301,13 @@ function App() {
         const { data: lists, error: listsError } = await supabase.from('custom_lists').select('*').eq('user_id', userId);
         if (lists) {
             const mappedLists: CuratedList[] = lists.map((item: any) => {
-                // Determine if content is in a JSONB column 'content' or flattened
-                const content = item.content || {}; 
+                // Ensure we spread content FIRST, then overwrite ID and Status to match DB
                 return {
+                    ...item.content,
                     id: item.id,
-                    title: item.title || content.title,
-                    subtitle: content.subtitle || item.subtitle || "",
-                    description: content.description || item.description || "",
-                    tiers: content.tiers || item.tiers || [], 
-                    seriesTiers: content.seriesTiers || item.series_tiers || [], 
-                    isCustom: true,
-                    status: item.status || 'draft',
-                    author: profile.name, 
-                    originalListId: content.originalListId || item.original_list_id,
-                    sherpaNotes: content.sherpaNotes || item.sherpa_notes || {}
+                    status: item.status,
+                    author: profile.name, // Ensure current user name is attached
+                    isCustom: true
                 };
             });
             setCustomLists(mappedLists);
@@ -325,7 +318,6 @@ function App() {
         if (overrides) {
             const overridesMap: Record<string, CuratedList> = {};
             overrides.forEach((item: any) => {
-                // Assuming content column holds the full list object
                 overridesMap[item.list_id] = { ...item.content, id: item.list_id };
             });
             setMasterOverrides(overridesMap);
@@ -347,19 +339,30 @@ function App() {
 
   useEffect(() => {
     let mounted = true;
-    // Load custom lists from local storage as backup / initial state
-    const savedCustom = localStorage.getItem('virgil_custom_lists');
-    if (savedCustom) setCustomLists(JSON.parse(savedCustom));
-
+    
+    // Initial Load - Check for session
     const initApp = async () => {
       try {
         const { data: { session: existingSession } } = await supabase.auth.getSession();
         if (mounted) {
             setSession(existingSession);
+            // Global overrides can be fetched without auth technically if RLS allows, 
+            // but usually we fetch them with user data. 
+            // If no user, we might want to fetch overrides anyway for the home page.
             if (existingSession) {
                 await fetchUserData(existingSession.user.id);
                 const savedView = localStorage.getItem('virgil_active_view') as 'home' | 'vault';
                 if (savedView === 'vault') setView('vault');
+            } else {
+                // Fetch public master overrides even if not logged in
+                const { data: overrides } = await supabase.from('master_overrides').select('*');
+                if (overrides) {
+                    const overridesMap: Record<string, CuratedList> = {};
+                    overrides.forEach((item: any) => {
+                        overridesMap[item.list_id] = { ...item.content, id: item.list_id };
+                    });
+                    setMasterOverrides(overridesMap);
+                }
             }
         }
       } catch (e) {
@@ -379,7 +382,7 @@ function App() {
       } else {
         setUserDb({});
         setVaultIds([]);
-        setCustomLists([]); // Clear custom lists on logout
+        setCustomLists([]); 
         setProfile({ name: "Initiate", motto: "The Unwritten" });
         setView('home');
         localStorage.removeItem('virgil_active_view');
@@ -391,10 +394,6 @@ function App() {
         subscription.unsubscribe();
     };
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem('virgil_custom_lists', JSON.stringify(customLists));
-  }, [customLists]);
 
   // --- SEARCH EFFECTS ---
   useEffect(() => {
@@ -887,14 +886,14 @@ function App() {
               <div className="w-full max-w-4xl mx-auto flex flex-col gap-8 h-full">
                   <div className="flex justify-between items-center border-b-4 border-black pb-4">
                      <h2 className="text-4xl font-black uppercase">Search Database</h2>
-                     <button onClick={() => setIsSearchOpen(false)} className="text-2xl font-black hover:scale-110">X</button>
+                     <button onClick={() => { setIsSearchOpen(false); setGlobalSearchQuery(""); setSearchResults([]); }} className="text-2xl font-black hover:scale-110">X</button>
                   </div>
                   <input autoFocus type="text" placeholder="Search films..." className="w-full bg-transparent text-3xl md:text-5xl font-black uppercase placeholder-black/30 border-none outline-none" value={globalSearchQuery} onChange={(e) => setGlobalSearchQuery(e.target.value)} />
                   <div className="flex-1 overflow-y-auto mt-4 pr-2">
                      {globalSearchQuery.length > 2 && (
                        <div className="grid grid-cols-1 gap-4">
                           {searchResults.map(film => (
-                             <div key={film.id} onClick={() => { setSelectedFilm(film); setIsSearchOpen(false); }} className="p-4 border-2 border-black hover:bg-black hover:text-[#F5C71A] cursor-pointer flex justify-between items-center group">
+                             <div key={film.id} onClick={() => { setSelectedFilm(film); setIsSearchOpen(false); setGlobalSearchQuery(""); setSearchResults([]); }} className="p-4 border-2 border-black hover:bg-black hover:text-[#F5C71A] cursor-pointer flex justify-between items-center group">
                                 <div className="flex items-center gap-4">
                                    {film.posterUrl && <img src={film.posterUrl} className="w-12 h-16 object-cover border border-black" />}
                                    <div><h3 className="text-xl font-black uppercase">{film.title}</h3><p className="font-mono text-sm opacity-60 group-hover:opacity-100">{film.year}</p></div>
@@ -1114,7 +1113,7 @@ function App() {
                          </button>
                        ))}
                     </div>
-                    <button onClick={() => setShowTierSearchModal(null)} className="mt-4 text-sm underline uppercase font-bold">Cancel</button>
+                    <button onClick={() => { setShowTierSearchModal(null); setTierSearchQuery(""); setTierSearchResults([]); }} className="mt-4 text-sm underline uppercase font-bold">Cancel</button>
                  </div>
               </div>
             )}
