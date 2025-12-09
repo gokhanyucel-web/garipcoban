@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Film, FilmAnalysis, UserFilmLog } from '../types';
+import { Film, UserFilmLog } from '../types';
 import { getFilmAnalysis } from '../services/geminiService';
 import { getRealCredits, getRealPoster } from '../services/tmdb'; // TMDB'den veri çek
 import { getListsContainingFilm } from '../constants';
@@ -18,24 +18,23 @@ interface FilmModalProps {
 }
 
 const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, onNavigateToList, sherpaNote, isEditing, onSaveNote, isUGC, listTitle }) => {
-  const [analysis, setAnalysis] = useState<FilmAnalysis | null>(null);
+  const [aiData, setAiData] = useState<{ analysis: string, trivia: string, vibes: string[] } | null>(null);
   const [loading, setLoading] = useState(false);
   const [noteContent, setNoteContent] = useState(sherpaNote || "");
-  const [featuredIn, setFeaturedIn] = useState<{id: string, title: string}[]>([]);
   const [hoverRating, setHoverRating] = useState(0);
   
-  // Kesin veriler için state
-  const [realDetails, setRealDetails] = useState<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[]} | null>(null);
+  // Kesin veriler için state (TMDB)
+  const [realDetails, setRealDetails] = useState<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[], keywords: string[]} | null>(null);
   const [realPoster, setRealPoster] = useState<string | null>(null);
 
   useEffect(() => {
     setNoteContent(sherpaNote || "");
     setRealDetails(null);
     setRealPoster(null);
-    setAnalysis(null);
+    setAiData(null);
+    setLoading(false);
     
     if (film) {
-      setFeaturedIn(getListsContainingFilm(film.id));
       
       // 1. TMDB'den kesin veri ve poster çek
       getRealCredits(film.title, film.year).then(data => setRealDetails(data));
@@ -45,12 +44,23 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
           setRealPoster(film.posterUrl || null);
       }
 
+      // If plot is missing, ensure we get details to populate the right panel
+      if (!film.plot || film.plot.length < 10) {
+          getRealCredits(film.title, film.year).then(data => {
+              if (data) setRealDetails(data);
+          });
+      }
+
       // 2. Gemini'den yorum/analiz çek
       if (film.isCustomEntry) {
-         setAnalysis({ summary: film.plot || "Custom entry.", significance: "User curated.", funFact: "-", director: film.director, cast: film.cast || [], year: film.year });
+         setAiData({ analysis: film.plot || "Custom entry curated by user.", trivia: "Added via Custom List.", vibes: [] });
       } else {
         setLoading(true);
-        getFilmAnalysis(film.title).then(data => { setAnalysis(data); setLoading(false); });
+        // Call AI with full context
+        getFilmAnalysis(film.title, film.director, film.year).then(data => { 
+            setAiData(data); 
+            setLoading(false); 
+        });
       }
     }
   }, [film]);
@@ -67,13 +77,13 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   const displayScreenplay = realDetails?.screenplay || film.screenplay;
   const displayMusic = realDetails?.music || film.music;
   const displayImage = realPoster || film.posterUrl;
-  const displayCast = realDetails?.cast || analysis?.cast || film.cast;
+  const displayCast = realDetails?.cast || film.cast;
   const displayDop = realDetails?.dop || [];
 
-  // Right Side Data (Prioritize Real Details for facts, Analysis for flair)
-  const displaySynopsis = realDetails?.overview || analysis?.summary || film.plot || "No details available.";
+  // Right Side Data (Prioritize Real Details for facts, AI for insights)
+  const displaySynopsis = realDetails?.overview || film.plot || "No details available.";
   const displayVoteAverage = realDetails?.vote_average ? realDetails.vote_average.toFixed(1) : (film.imdbScore ? film.imdbScore.toString() : "-");
-
+  
   const RatingBar = () => (
     <div className="flex gap-1 w-full mt-2" onMouseLeave={() => setHoverRating(0)}>
       {Array.from({ length: 10 }).map((_, i) => {
@@ -193,21 +203,50 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     </p>
                 </div>
 
-                {/* SIGNIFICANCE / ANALYSIS */}
+                {/* AI ANALYSIS & TRIVIA */}
                 <div className="flex flex-col gap-4">
                     <div>
                         <h3 className="font-black text-lg mb-2 uppercase">Why This Film?</h3>
-                        <p className="text-lg">
-                            {analysis ? analysis.significance : (loading ? "Consulting Archives..." : "A significant entry in cinema history.")}
+                        <p className={`text-lg italic font-medium ${loading ? 'opacity-50 animate-pulse' : ''}`}>
+                            {loading ? "Consulting Archives..." : (aiData?.analysis || "Analysis unavailable.")}
                         </p>
                     </div>
-                    {analysis?.funFact && (
+                    
+                    {/* TRIVIA BOX */}
+                    {(aiData?.trivia || loading) && (
                         <div className="bg-black/5 p-4 border-2 border-black/10 border-dashed">
-                            <h3 className="font-black text-xs mb-1 uppercase">★ Classified Info</h3>
-                            <p className="text-sm font-mono opacity-80">{analysis.funFact}</p>
+                            <h3 className="font-black text-xs mb-1 uppercase">★ Trivia</h3>
+                            <p className={`text-sm font-mono opacity-80 ${loading ? 'animate-pulse' : ''}`}>{loading ? "Retrieving classified data..." : aiData?.trivia}</p>
                         </div>
                     )}
                 </div>
+
+                {/* AI VIBES (CURATOR RECOMMENDS) */}
+                {aiData?.vibes && aiData.vibes.length > 0 && (
+                    <div className="pt-6 border-t-4 border-black">
+                        <h3 className="font-black text-lg mb-4 uppercase">Curator Recommends (Vibes)</h3>
+                        <div className="flex flex-col gap-2">
+                            {aiData.vibes.map((vibe, idx) => (
+                                <div key={idx} className="flex items-center gap-3 border-2 border-transparent hover:border-black p-2 transition-all cursor-default">
+                                    <div className="w-2 h-2 bg-black"></div>
+                                    <span className="font-bold uppercase text-lg">{vibe}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* THEMES (KEYWORDS) */}
+                {realDetails?.keywords && realDetails.keywords.length > 0 && (
+                    <div className="mt-4 pt-4 border-t-2 border-black/20">
+                        <h3 className="font-black text-xs mb-2 uppercase tracking-widest opacity-60">THEMES</h3>
+                        <div className="flex flex-wrap gap-2">
+                            {realDetails.keywords.map(k => (
+                                <span key={k} className="px-2 py-1 border border-black text-[10px] font-bold uppercase hover:bg-black hover:text-[#F5C71A] cursor-default">#{k}</span>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
           </div>
         </div>
