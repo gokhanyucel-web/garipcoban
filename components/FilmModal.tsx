@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Film, FilmAnalysis, UserFilmLog } from '../types';
 import { getFilmAnalysis } from '../services/geminiService';
 import { getRealCredits, getRealPoster } from '../services/tmdb'; // TMDB'den veri çek
-import { getListsContainingFilm } from '../constants';
+import { getListsContainingFilm, createFilm } from '../constants';
 
 interface FilmModalProps {
   film: Film | null;
@@ -25,8 +25,18 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   const [hoverRating, setHoverRating] = useState(0);
   
   // Kesin veriler için state
-  const [realDetails, setRealDetails] = useState<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[]} | null>(null);
+  const [realDetails, setRealDetails] = useState<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[], keywords: string[], recommendations: any[]} | null>(null);
   const [realPoster, setRealPoster] = useState<string | null>(null);
+
+  // Recommendation Click Handling: Re-mount logic by changing the film passed to modal? 
+  // Ideally, app state should handle this, but for now we can fetch details for clicked recommendation within the modal or update parent
+  // BUT the parent passes the film. Let's make this modal display "Similar Vibes" that are purely visual or simple links if possible.
+  // Actually, we can update the film prop by calling a callback? No, props are read-only.
+  // We will assume "Similar Vibes" are just for discovery context for now, or if clickable, they open in a new search.
+  
+  // Actually, we can just use the same modal state in parent if we passed a "onSelectFilm" prop.
+  // But current props are onClose.
+  // Let's keep it simple: Just display them.
 
   useEffect(() => {
     setNoteContent(sherpaNote || "");
@@ -200,6 +210,18 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     </p>
                 </div>
 
+                {/* KEYWORDS / TRIVIA */}
+                {realDetails?.keywords && realDetails.keywords.length > 0 && (
+                    <div>
+                        <h3 className="font-black text-xs mb-2 uppercase tracking-widest opacity-60">Keywords / Vibe</h3>
+                        <div className="flex flex-wrap gap-2">
+                            {realDetails.keywords.map(k => (
+                                <span key={k} className="px-2 py-1 border border-black text-[10px] font-bold uppercase hover:bg-black hover:text-[#F5C71A] cursor-default">#{k}</span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* SIGNIFICANCE / ANALYSIS */}
                 <div className="flex flex-col gap-4">
                     <div>
@@ -215,6 +237,21 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                         </div>
                     )}
                 </div>
+
+                {/* SIMILAR VIBES */}
+                {realDetails?.recommendations && realDetails.recommendations.length > 0 && (
+                    <div className="pt-6 border-t-4 border-black">
+                        <h3 className="font-black text-lg mb-4 uppercase">Similar Vibes</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            {realDetails.recommendations.map(r => (
+                                <div key={r.id} className="relative group cursor-pointer border-2 border-black" title={r.title}>
+                                    {r.posterUrl ? <img src={r.posterUrl} className="w-full h-32 object-cover grayscale group-hover:grayscale-0 transition-all" /> : <div className="w-full h-32 bg-black/10 flex items-center justify-center text-xs font-bold p-2 text-center">{r.title}</div>}
+                                    <div className="absolute bottom-0 left-0 w-full bg-black/80 text-[#F5C71A] text-[9px] p-1 font-bold uppercase truncate">{r.title}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
           </div>
         </div>

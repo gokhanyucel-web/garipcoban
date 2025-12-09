@@ -6,7 +6,7 @@ import FilmCard from './components/FilmCard';
 import FilmModal from './components/FilmModal';
 import { getAIListSuggestions } from './services/geminiService';
 import { getDirectorPicks, searchMovies } from './services/tmdb';
-import { Search, Twitter, Instagram, Mail, ShieldAlert, Save, Trash2, LogOut, User, MinusCircle } from 'lucide-react';
+import { Search, Twitter, Instagram, Mail, ShieldAlert, Save, Trash2, LogOut, User, MinusCircle, Check } from 'lucide-react';
 
 // --- STATIC COMPONENTS ---
 
@@ -639,10 +639,19 @@ function App() {
       setAiSuggestions([]);
   };
 
-  const handleTogglePublish = () => {
+  const handleTogglePublish = async () => {
     if (!editingList) return;
     const newStatus = editingList.status === 'published' ? 'draft' : 'published';
-    setEditingList({...editingList, status: newStatus});
+    const updatedList = { ...editingList, status: newStatus };
+    setEditingList(updatedList);
+    
+    // Immediate Local Update
+    setCustomLists(prev => prev.map(l => l.id === updatedList.id ? updatedList : l));
+
+    // Supabase Update
+    if (session) {
+        await supabase.from('custom_lists').update({ status: newStatus }).eq('id', updatedList.id);
+    }
   };
 
   const handleAddTier = (isSeries: boolean) => {
@@ -863,7 +872,7 @@ function App() {
                   </div>
               </div>
            </div>
-      )}
+        )}
 
       {/* 3. FILM MODAL */}
       {selectedFilm && !currentList && <FilmModal film={selectedFilm} log={userDb[selectedFilm.id]} onUpdateLog={handleUpdateLog} onClose={() => setSelectedFilm(null)} onNavigateToList={handleNavigateToList} listTitle="Global Search" />}
@@ -887,7 +896,15 @@ function App() {
                                 const isSaved = vaultIds.includes(list.id);
                                 return (
                                   <div key={list.id} onClick={() => { setSelectedList(list); setIsEditorMode(false); }} className={`group relative flex flex-col text-left cursor-pointer border-4 border-black p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] bg-[#F5C71A] text-black hover:translate-x-[-4px] hover:translate-y-[-4px] hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] hover:bg-black hover:text-[#F5C71A] transition-all duration-200`}>
-                                    {isSaved && <div className="absolute top-4 right-2 bg-black text-yellow-400 text-[10px] px-1 font-bold">SAVED</div>}
+                                    {isSaved && (
+                                        <button 
+                                            onClick={(e) => handleToggleVault(e, list.id)}
+                                            className="absolute top-2 right-2 bg-black text-yellow-400 text-[10px] px-2 py-1 font-bold flex items-center gap-1 group/btn hover:bg-red-600 hover:text-white"
+                                        >
+                                            <span className="group-hover/btn:hidden flex items-center gap-1">✓ SAVED</span>
+                                            <span className="hidden group-hover/btn:inline">REMOVE</span>
+                                        </button>
+                                    )}
                                     {!isSaved && <button onClick={(e) => handleToggleVault(e, list.id)} className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center border-2 border-black hover:bg-black hover:text-[#F5C71A] font-black transition-colors z-10" title="Add to Vault">+</button>}
                                     <h3 className="text-2xl font-black uppercase leading-none mb-2 mt-2 pr-8">{list.title}</h3>
                                     <p className="text-sm font-bold uppercase opacity-80 mb-4">{list.subtitle}</p>
@@ -923,9 +940,25 @@ function App() {
                        </div>
                        <div className="flex-1 p-8 flex flex-col justify-center relative">
                            <div className="mb-8"><span className="text-[10px] font-mono uppercase tracking-[0.4em] opacity-60 bg-[#F5C71A] text-black px-2 py-1">Identity Archetype</span><h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter leading-none mt-2">{sherpaIdentity.fullTitle}</h2><p className="font-mono text-sm opacity-60 mt-2 max-w-md">"{profile.motto || "Cinema is truth 24 times a second."}"</p></div>
-                           <div className="flex gap-8 border-t-2 border-dashed border-[#F5C71A]/30 pt-6"><div className="flex flex-col"><span className="text-3xl font-mono font-bold">{sherpaIdentity.totalWatched}</span><span className="text-[9px] uppercase tracking-wider opacity-60">Films Logged</span></div><div className="flex flex-col"><span className="text-3xl font-mono font-bold">{sherpaIdentity.totalHours}</span><span className="text-[9px] uppercase tracking-wider opacity-60">Hours</span></div><div className="flex flex-col"><span className="text-3xl font-mono font-bold">{active.length}</span><span className="text-[9px] uppercase tracking-wider opacity-60">Active Journeys</span></div></div>
+                           <div className="flex gap-8 border-t-2 border-dashed border-[#F5C71A]/30 pt-6"><div className="flex flex-col"><span className="text-3xl font-mono font-bold">{sherpaIdentity.totalWatched}</span><span className="text-[9px] uppercase tracking-wider opacity-60">Films Logged</span></div><div className="flex flex-col"><span className="text-3xl font-mono font-bold">{sherpaIdentity.totalHours}</span><span className="text-[9px] uppercase tracking-wider opacity-60">Hours</span></div><div className="flex flex-col"><span className="text-3xl font-mono font-bold">{active.length + completed.length}</span><span className="text-[9px] uppercase tracking-wider opacity-60">Total Journeys</span></div></div>
                        </div>
                     </div>
+
+                    {/* COMPLETED JOURNEYS */}
+                    {completed.length > 0 && (
+                        <section className="space-y-6">
+                            <div className="flex items-center gap-4"><div className="h-6 w-6 bg-yellow-600 border-2 border-black"></div><h2 className="text-2xl md:text-3xl font-black uppercase tracking-widest border-b-4 border-black pb-2 w-full text-yellow-700">Completed Journeys</h2></div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {completed.map(list => (
+                                    <div key={list.id} onClick={() => setSelectedList(list)} className="border-4 border-black p-4 bg-black text-[#F5C71A] cursor-pointer hover:scale-[1.02] shadow-[4px_4px_0px_0px_#B45309] relative transition-all group">
+                                        <div className="absolute top-2 right-2 border border-[#F5C71A] px-2 py-0.5 text-[10px] font-black uppercase tracking-widest">MASTERED</div>
+                                        <h3 className="font-black uppercase mt-4 text-xl">{list.title}</h3>
+                                        <div className="mt-2 text-xs font-mono opacity-80 border-t border-[#F5C71A] pt-1">100% COMPLETE</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    )}
 
                     <section className="space-y-6">
                       <div className="flex items-center gap-4"><div className="h-6 w-6 bg-black border-2 border-black"></div><h2 className="text-2xl md:text-3xl font-black uppercase tracking-widest border-b-4 border-black pb-2 w-full">Active Journeys</h2></div>
