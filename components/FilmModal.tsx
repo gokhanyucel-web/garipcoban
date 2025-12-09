@@ -45,6 +45,13 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
           setRealPoster(film.posterUrl || null);
       }
 
+      // If plot is missing, ensure we get details to populate the right panel
+      if (!film.plot || film.plot.length < 10) {
+          getRealCredits(film.title, film.year).then(data => {
+              if (data) setRealDetails(data);
+          });
+      }
+
       // 2. Gemini'den yorum/analiz çek
       if (film.isCustomEntry) {
          setAnalysis({ summary: film.plot || "Custom entry.", significance: "User curated.", funFact: "-", director: film.director, cast: film.cast || [], year: film.year });

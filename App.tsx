@@ -297,22 +297,26 @@ function App() {
             setVaultIds(vault.map((row: any) => row.list_id));
         }
 
-        // 3. Custom Lists (Fix: Correct DB Read)
+        // 3. Custom Lists (Robust JSONB Parsing)
         const { data: lists, error: listsError } = await supabase.from('custom_lists').select('*').eq('user_id', userId);
         if (lists) {
-            const mappedLists: CuratedList[] = lists.map((item: any) => ({
-                id: item.id,
-                title: item.title,
-                subtitle: item.subtitle,
-                description: item.description,
-                tiers: item.tiers || [], 
-                seriesTiers: item.series_tiers || [], 
-                isCustom: true,
-                status: item.status || 'draft',
-                author: profile.name, 
-                originalListId: item.original_list_id,
-                sherpaNotes: item.sherpa_notes || {}
-            }));
+            const mappedLists: CuratedList[] = lists.map((item: any) => {
+                // Determine if content is in a JSONB column 'content' or flattened
+                const content = item.content || {}; 
+                return {
+                    id: item.id,
+                    title: item.title || content.title,
+                    subtitle: content.subtitle || item.subtitle || "",
+                    description: content.description || item.description || "",
+                    tiers: content.tiers || item.tiers || [], 
+                    seriesTiers: content.seriesTiers || item.series_tiers || [], 
+                    isCustom: true,
+                    status: item.status || 'draft',
+                    author: profile.name, 
+                    originalListId: content.originalListId || item.original_list_id,
+                    sherpaNotes: content.sherpaNotes || item.sherpa_notes || {}
+                };
+            });
             setCustomLists(mappedLists);
         }
 
@@ -547,19 +551,22 @@ function App() {
         // Optimistic update
         setCustomLists(prev => prev.map(l => l.id === editingList.id ? editingList : l));
         
-        // Write to DB
+        // Write to DB with robust JSONB content column
         if (session) {
             const payload = {
                 id: editingList.id,
                 user_id: session.user.id,
                 title: editingList.title,
-                subtitle: editingList.subtitle,
-                description: editingList.description,
-                tiers: editingList.tiers, // Supabase handles JSON conversion
-                series_tiers: editingList.seriesTiers,
                 status: editingList.status || 'draft',
-                original_list_id: editingList.originalListId,
-                sherpa_notes: editingList.sherpaNotes,
+                // Pack complex objects into content JSONB for persistence
+                content: {
+                    subtitle: editingList.subtitle,
+                    description: editingList.description,
+                    tiers: editingList.tiers,
+                    seriesTiers: editingList.seriesTiers,
+                    originalListId: editingList.originalListId,
+                    sherpaNotes: editingList.sherpaNotes
+                },
                 updated_at: new Date().toISOString()
             };
             const { error } = await supabase.from('custom_lists').upsert(payload);
@@ -997,9 +1004,18 @@ function App() {
               </div>
             </nav>
             <header className="pt-20 pb-8 text-center px-4 relative z-20 flex flex-col items-center">
-                <h1 className="text-4xl md:text-6xl font-black tracking-tight mb-2 uppercase">{currentList.title}</h1>
-                <div className="h-1 w-32 bg-black mx-auto mb-4"></div>
-                <p className="text-lg md:text-xl font-medium italic opacity-90 tracking-widest uppercase mb-6">{currentList.subtitle}</p>
+                {isEditorMode ? (
+                   <div className="flex flex-col gap-2 w-full max-w-xl relative z-50">
+                      <input value={editingList?.title} onChange={(e) => setEditingList({...editingList!, title: e.target.value})} className="text-4xl md:text-6xl font-black uppercase text-center bg-transparent border-b-2 border-black focus:outline-none" />
+                      <input value={editingList?.subtitle} onChange={(e) => setEditingList({...editingList!, subtitle: e.target.value})} className="text-xl font-bold uppercase text-center bg-transparent border-b border-black focus:outline-none" />
+                   </div>
+                ) : (
+                  <>
+                    <h1 className="text-4xl md:text-6xl font-black tracking-tight mb-2 uppercase">{currentList.title}</h1>
+                    <div className="h-1 w-32 bg-black mx-auto mb-4"></div>
+                    <p className="text-lg md:text-xl font-medium italic opacity-90 tracking-widest uppercase mb-6">{currentList.subtitle}</p>
+                  </>
+                )}
             </header>
             
             {showTierSearchModal && (
