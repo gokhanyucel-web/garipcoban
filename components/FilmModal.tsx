@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Film, FilmAnalysis, UserFilmLog } from '../types';
+import { Film, UserFilmLog } from '../types';
 import { getFilmAnalysis } from '../services/geminiService';
 import { getRealCredits, getRealPoster } from '../services/tmdb'; // TMDB'den veri çek
-import { getListsContainingFilm, createFilm } from '../constants';
+import { getListsContainingFilm } from '../constants';
 
 interface FilmModalProps {
   film: Film | null;
@@ -18,13 +18,13 @@ interface FilmModalProps {
 }
 
 const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, onNavigateToList, sherpaNote, isEditing, onSaveNote, isUGC, listTitle }) => {
-  const [analysis, setAnalysis] = useState<FilmAnalysis | null>(null);
+  const [aiData, setAiData] = useState<{ analysis: string, trivia: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [noteContent, setNoteContent] = useState(sherpaNote || "");
   const [featuredIn, setFeaturedIn] = useState<{id: string, title: string}[]>([]);
   const [hoverRating, setHoverRating] = useState(0);
   
-  // Kesin veriler için state
+  // Kesin veriler için state (TMDB)
   const [realDetails, setRealDetails] = useState<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[], keywords: string[], recommendations: any[], tagline: string} | null>(null);
   const [realPoster, setRealPoster] = useState<string | null>(null);
 
@@ -32,7 +32,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
     setNoteContent(sherpaNote || "");
     setRealDetails(null);
     setRealPoster(null);
-    setAnalysis(null);
+    setAiData(null);
     setLoading(false);
     
     if (film) {
@@ -55,12 +55,12 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
 
       // 2. Gemini'den yorum/analiz çek
       if (film.isCustomEntry) {
-         setAnalysis({ summary: film.plot || "Custom entry.", significance: "User curated.", funFact: "-", director: film.director, cast: film.cast || [], year: film.year });
+         setAiData({ analysis: film.plot || "Custom entry.", trivia: "Curated by user." });
       } else {
         setLoading(true);
-        // Call AI with full context for better results
+        // Call AI with full context
         getFilmAnalysis(film.title, film.director, film.year).then(data => { 
-            setAnalysis(data); 
+            setAiData(data); 
             setLoading(false); 
         });
       }
@@ -79,16 +79,13 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   const displayScreenplay = realDetails?.screenplay || film.screenplay;
   const displayMusic = realDetails?.music || film.music;
   const displayImage = realPoster || film.posterUrl;
-  const displayCast = realDetails?.cast || analysis?.cast || film.cast;
+  const displayCast = realDetails?.cast || film.cast;
   const displayDop = realDetails?.dop || [];
 
-  // Right Side Data (Prioritize Real Details for facts, Analysis for flair)
-  const displaySynopsis = realDetails?.overview || analysis?.summary || film.plot || "No details available.";
+  // Right Side Data (Prioritize Real Details for facts, AI for insights)
+  const displaySynopsis = realDetails?.overview || film.plot || "No details available.";
   const displayVoteAverage = realDetails?.vote_average ? realDetails.vote_average.toFixed(1) : (film.imdbScore ? film.imdbScore.toString() : "-");
   
-  // Use AI Significance (Curator Note) if available, otherwise Tagline, otherwise default
-  const displayWhy = loading ? "Consulting Archives..." : (analysis?.significance || realDetails?.tagline || "A significant entry in cinema history.");
-
   const RatingBar = () => (
     <div className="flex gap-1 w-full mt-2" onMouseLeave={() => setHoverRating(0)}>
       {Array.from({ length: 10 }).map((_, i) => {
@@ -188,7 +185,6 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
               <div className="flex justify-between items-end">
                 <div className="flex gap-4">
                      <p className="text-xl font-mono font-bold">YEAR: {film.year}</p>
-                     <p className="text-xl font-mono font-bold opacity-60">RATING: {displayVoteAverage}/10</p>
                 </div>
                 {listTitle && <p className="text-xs font-mono opacity-60 uppercase">Context: {listTitle}</p>}
               </div>
@@ -209,18 +205,20 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     </p>
                 </div>
 
-                {/* SIGNIFICANCE / ANALYSIS */}
+                {/* AI ANALYSIS */}
                 <div className="flex flex-col gap-4">
                     <div>
                         <h3 className="font-black text-lg mb-2 uppercase">Why This Film?</h3>
                         <p className={`text-lg italic font-medium ${loading ? 'opacity-50 animate-pulse' : ''}`}>
-                            {displayWhy}
+                            {loading ? "Consulting Archives..." : (aiData?.analysis || realDetails?.tagline || "A significant entry in cinema history.")}
                         </p>
                     </div>
-                    {analysis?.funFact && (
+                    
+                    {/* TRIVIA BOX */}
+                    {(aiData?.trivia) && (
                         <div className="bg-black/5 p-4 border-2 border-black/10 border-dashed">
-                            <h3 className="font-black text-xs mb-1 uppercase">★ Classified Info</h3>
-                            <p className="text-sm font-mono opacity-80">{analysis.funFact}</p>
+                            <h3 className="font-black text-xs mb-1 uppercase">★ Trivia</h3>
+                            <p className="text-sm font-mono opacity-80">{aiData.trivia}</p>
                         </div>
                     )}
                 </div>
@@ -240,10 +238,10 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     </div>
                 )}
 
-                {/* KEYWORDS / TRIVIA (MOVED TO BOTTOM) */}
+                {/* KEYWORDS / THEME / VIBE (MOVED TO BOTTOM) */}
                 {realDetails?.keywords && realDetails.keywords.length > 0 && (
                     <div className="mt-4 pt-4 border-t-2 border-black/20">
-                        <h3 className="font-black text-xs mb-2 uppercase tracking-widest opacity-60">TRIVIA / VIBE</h3>
+                        <h3 className="font-black text-xs mb-2 uppercase tracking-widest opacity-60">THEME / VIBE</h3>
                         <div className="flex flex-wrap gap-2">
                             {realDetails.keywords.map(k => (
                                 <span key={k} className="px-2 py-1 border border-black text-[10px] font-bold uppercase hover:bg-black hover:text-[#F5C71A] cursor-default">#{k}</span>

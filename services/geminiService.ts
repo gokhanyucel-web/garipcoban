@@ -1,6 +1,13 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AI_Suggestion, FilmAnalysis } from '../types';
 
+// Update interface locally if types.ts cannot be changed easily in this context, 
+// or cast result. Ideally FilmAnalysis in types.ts should match, but we can cast.
+interface AIAnalysisResult {
+  analysis: string;
+  trivia: string;
+}
+
 export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion[]> => {
   try {
     const apiKey = process.env.API_KEY;
@@ -48,7 +55,7 @@ export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion
   }
 };
 
-export const getFilmAnalysis = async (title: string, director: string, year: number): Promise<FilmAnalysis | null> => {
+export const getFilmAnalysis = async (title: string, director: string, year: number): Promise<AIAnalysisResult | null> => {
   try {
     const apiKey = process.env.API_KEY;
     if (!apiKey) return null;
@@ -56,31 +63,26 @@ export const getFilmAnalysis = async (title: string, director: string, year: num
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: `Analyze the film "${title}" (${year}) directed by ${director}.
-      1. Summary: Provide a one-sentence logline focusing on the premise.
-      2. Significance: Write a short, punchy, 2-sentence curator note explaining why this film is culturally significant or essential. Focus on its impact on the genre or cinema history. No spoilers. Tone: Knowledgeable Cinephile.
-      3. Fun Fact: One rare production fact.
-      Also verify director, year and top cast.`,
+      contents: `Act as a film curator. Return a JSON object with two fields for the film "${title}" (${year}) directed by ${director}:
+
+      1. analysis: A 2-sentence cultural analysis of why '${title}' is significant. NO marketing taglines. Intellectual but accessible tone.
+      2. trivia: One fascinating, obscure production fact or trivia about the film.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            summary: { type: Type.STRING },
-            significance: { type: Type.STRING },
-            funFact: { type: Type.STRING },
-            director: { type: Type.STRING },
-            cast: { type: Type.ARRAY, items: { type: Type.STRING } },
-            year: { type: Type.NUMBER },
+            analysis: { type: Type.STRING },
+            trivia: { type: Type.STRING },
           },
-          required: ["summary", "significance", "funFact", "director", "cast", "year"],
+          required: ["analysis", "trivia"],
         }
       }
     });
 
     const text = response.text;
     if (!text) return null;
-    return JSON.parse(text) as FilmAnalysis;
+    return JSON.parse(text) as AIAnalysisResult;
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
     return null;

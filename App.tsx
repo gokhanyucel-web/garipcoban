@@ -320,7 +320,18 @@ function App() {
             setCustomLists(mappedLists);
         }
 
-        // 4. Profile
+        // 4. Master Overrides (Admin Persistence)
+        const { data: overrides, error: overridesError } = await supabase.from('master_overrides').select('*');
+        if (overrides) {
+            const overridesMap: Record<string, CuratedList> = {};
+            overrides.forEach((item: any) => {
+                // Assuming content column holds the full list object
+                overridesMap[item.list_id] = { ...item.content, id: item.list_id };
+            });
+            setMasterOverrides(overridesMap);
+        }
+
+        // 5. Profile
         const { data: profileData, error: profileError } = await supabase.from('profiles').select('*').eq('id', userId).single();
         if (profileData) {
             setProfile({
@@ -574,7 +585,20 @@ function App() {
             if (error) console.error("Error saving custom list:", error);
         }
     } else {
-        setMasterOverrides(prev => ({...prev, [editingList.id]: editingList}));
+        // Admin Master Override Save
+        if (isAdmin && session) {
+             setMasterOverrides(prev => ({...prev, [editingList.id]: editingList}));
+             
+             const payload = {
+                 list_id: editingList.id,
+                 content: editingList, // Store the modified list object
+                 updated_at: new Date().toISOString()
+             };
+             // Upsert to master_overrides table
+             await supabase.from('master_overrides').upsert(payload, { onConflict: 'list_id' });
+        } else {
+             setMasterOverrides(prev => ({...prev, [editingList.id]: editingList}));
+        }
     }
     
     setSelectedList(editingList);
