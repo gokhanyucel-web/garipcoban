@@ -290,60 +290,131 @@ function App() {
 
   const fetchUserData = async (userId: string) => {
     try {
-        // 1. Logs
-        const { data: logs, error: logsError } = await supabase.from('user_logs').select('*').eq('user_id', userId);
+        console.log("🔄 fetchUserData başladı - userId:", userId);
+        
+        // 1. Profile'i EN BAŞTA çek (diğer her şeyden önce)
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single();
+        
+        if (profileError) {
+            console.error("❌ Profile fetch error:", profileError);
+        }
+        
+        const userName = profileData?.username || "Initiate";
+        const userMotto = profileData?.motto || "The Unwritten";
+        const userAvatar = profileData?.avatar_url || undefined;
+
+        console.log("👤 Profile yüklendi:", userName);
+
+        setProfile({
+            name: userName,
+            motto: userMotto,
+            avatar: userAvatar
+        });
+
+        // 2. Logs
+        const { data: logs, error: logsError } = await supabase
+          .from('user_logs')
+          .select('*')
+          .eq('user_id', userId);
+        
+        if (logsError) {
+            console.error("❌ Logs fetch error:", logsError);
+        }
+        
         if (logs) {
             const db: UserDatabase = {};
             logs.forEach((log: any) => {
                 const key = String(log.film_id);
-                db[key] = { watched: log.watched, rating: log.rating, notes: log.notes || '' };
-            });
-            setUserDb(db);
-        }
-
-        // 2. Vault
-        const { data: vault, error: vaultError } = await supabase.from('vault').select('list_id').eq('user_id', userId);
-        if (vault) {
-            setVaultIds(vault.map((row: any) => row.list_id));
-        }
-
-        // 3. Custom Lists (Robust JSONB Parsing)
-        const { data: lists, error: listsError } = await supabase.from('custom_lists').select('*').eq('user_id', userId);
-        if (lists) {
-            const mappedLists: CuratedList[] = lists.map((item: any) => {
-                // Ensure we spread content FIRST, then overwrite ID and Status to match DB
-                return {
-                    ...item.content,
-                    id: item.id,
-                    status: item.status,
-                    author: profile.name, // Ensure current user name is attached
-                    isCustom: true
+                db[key] = { 
+                  watched: log.watched, 
+                  rating: log.rating, 
+                  notes: log.notes || '' 
                 };
             });
+            setUserDb(db);
+            console.log("📝 User logs yüklendi:", logs.length, "adet");
+        }
+
+        // 3. Vault
+        const { data: vault, error: vaultError } = await supabase
+          .from('vault')
+          .select('list_id')
+          .eq('user_id', userId);
+        
+        if (vaultError) {
+            console.error("❌ Vault fetch error:", vaultError);
+        }
+        
+        if (vault) {
+            setVaultIds(vault.map((row: any) => row.list_id));
+            console.log("🗄️ Vault yüklendi:", vault.length, "liste");
+        }
+
+        // 4. Custom Lists - ŞİMDİ PROFILE HAZIR
+        const { data: lists, error: listsError } = await supabase
+          .from('custom_lists')
+          .select('*')
+          .eq('user_id', userId);
+        
+        if (listsError) {
+            console.error("❌ Custom lists fetch error:", listsError);
+        }
+        
+        if (lists) {
+            console.log("📦 Supabase'den gelen custom lists:", lists);
+            
+            const mappedLists: CuratedList[] = lists.map((item: any) => {
+                // content JSONB içindeki tüm veriyi al
+                const listContent = item.content || {};
+                
+                return {
+                    // ÖNCE content'i spread et
+                    ...listContent,
+                    // SONRA DB'den gelen ID ve status'ü override et
+                    id: item.id,
+                    status: item.status || 'draft',
+                    author: userName, // Artık userName hazır
+                    isCustom: true,
+                    // Eğer content'te yoksa, boş array'ler ekle
+                    tiers: listContent.tiers || [],
+                    seriesTiers: listContent.seriesTiers,
+                    sherpaNotes: listContent.sherpaNotes || {}
+                };
+            });
+            
+            console.log("✅ Mapped custom lists:", mappedLists);
             setCustomLists(mappedLists);
         }
 
-        // 4. Master Overrides (Admin Persistence)
-        const { data: overrides, error: overridesError } = await supabase.from('master_overrides').select('*');
+        // 5. Master Overrides (Admin)
+        const { data: overrides, error: overridesError } = await supabase
+          .from('master_overrides')
+          .select('*');
+        
+        if (overridesError) {
+            console.error("❌ Master overrides fetch error:", overridesError);
+        }
+        
         if (overrides) {
             const overridesMap: Record<string, CuratedList> = {};
             overrides.forEach((item: any) => {
-                overridesMap[item.list_id] = { ...item.content, id: item.list_id };
+                overridesMap[item.list_id] = { 
+                  ...item.content, 
+                  id: item.list_id 
+                };
             });
             setMasterOverrides(overridesMap);
+            console.log("🔧 Master overrides yüklendi:", overrides.length);
         }
 
-        // 5. Profile
-        const { data: profileData, error: profileError } = await supabase.from('profiles').select('*').eq('id', userId).single();
-        if (profileData) {
-            setProfile({
-                name: profileData.username || "Initiate",
-                motto: profileData.motto || "The Unwritten",
-                avatar: profileData.avatar_url || undefined
-            });
-        }
+        console.log("✅ fetchUserData tamamlandı");
+
     } catch (e) {
-        console.error("Critical error in fetchUserData:", e);
+        console.error("💥 Critical error in fetchUserData:", e);
     }
   };
 
@@ -353,17 +424,17 @@ function App() {
     // Initial Load - Check for session
     const initApp = async () => {
       try {
+        console.log("🚀 App başlatılıyor...");
         const { data: { session: existingSession } } = await supabase.auth.getSession();
         if (mounted) {
             setSession(existingSession);
-            // Global overrides can be fetched without auth technically if RLS allows, 
-            // but usually we fetch them with user data. 
-            // If no user, we might want to fetch overrides anyway for the home page.
             if (existingSession) {
+                console.log("✅ Session bulundu:", existingSession.user.id);
                 await fetchUserData(existingSession.user.id);
                 const savedView = localStorage.getItem('virgil_active_view') as 'home' | 'vault';
                 if (savedView === 'vault') setView('vault');
             } else {
+                console.log("ℹ️ Session yok, public overrides yükleniyor");
                 // Fetch public master overrides even if not logged in
                 const { data: overrides } = await supabase.from('master_overrides').select('*');
                 if (overrides) {
@@ -378,7 +449,10 @@ function App() {
       } catch (e) {
         console.error("Initialization error:", e);
       } finally {
-        if (mounted) setIsLoading(false);
+        if (mounted) {
+            console.log("✅ Loading tamamlandı");
+            setIsLoading(false);
+        }
       }
     };
 
@@ -386,6 +460,7 @@ function App() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (!mounted) return;
+      console.log("🔐 Auth değişikliği:", _event);
       setSession(newSession);
       if (newSession) {
         fetchUserData(newSession.user.id);
@@ -568,29 +643,14 @@ function App() {
   const handleSaveList = async () => {
     if (!editingList) return;
     
-    // CRITICAL: Remix Logic Fix
-    // If editing a master list AND NOT ADMIN, force create new custom list
-    // OR if editing a master list AND ADMIN, but explicitly want to fork/remix
-    // We treat it as custom if it was already custom OR if we are forcing a fork
-    
     let listToSave = { ...editingList };
-    let isNewRemix = false;
 
-    // If we are editing a master list source (isCustom is false), we MUST convert it to a custom list unless we are explicitly in Admin Override mode.
-    // However, the UI logic sets isEditorMode only.
-    // Safety check: If isAdmin is false, we NEVER overwrite master.
-    // If isAdmin is true, we assume they might want to overwrite if they didn't explicitly Fork.
-    // BUT, the `handleForkList` already handles creating the copy structure.
-    // The issue is if `editingList` ID still points to a master list ID.
-    
-    // If the list ID is a known master list ID (not starting with 'custom_'), we must check permissions.
+    // Master list override (admin only)
     if (!listToSave.id.startsWith('custom_')) {
         if (!isAdmin) {
-            // Should not happen via UI, but safety first
             console.error("Unauthorized attempt to save master list");
             return;
         }
-        // Admin saving master list
         setMasterOverrides(prev => ({...prev, [listToSave.id]: listToSave}));
         if (session) {
              const payload = {
@@ -601,27 +661,42 @@ function App() {
              await supabase.from('master_overrides').upsert(payload, { onConflict: 'list_id' });
         }
     } else {
-        // Saving a Custom List (Draft/Published/Remix)
+        // Custom List Save
         setCustomLists(prev => prev.map(l => l.id === listToSave.id ? listToSave : l));
         
         if (session) {
             const payload = {
                 id: listToSave.id,
                 user_id: session.user.id,
-                title: listToSave.title,
+                title: listToSave.title, // Top-level title (searchable)
                 status: listToSave.status || 'draft',
                 content: {
+                    // TÜM liste içeriğini content'e kaydet
+                    title: listToSave.title,
                     subtitle: listToSave.subtitle,
                     description: listToSave.description,
                     tiers: listToSave.tiers,
                     seriesTiers: listToSave.seriesTiers,
                     originalListId: listToSave.originalListId,
-                    sherpaNotes: listToSave.sherpaNotes
+                    sherpaNotes: listToSave.sherpaNotes,
+                    author: listToSave.author,
+                    privacy: listToSave.privacy
                 },
                 updated_at: new Date().toISOString()
             };
-            const { error } = await supabase.from('custom_lists').upsert(payload);
-            if (error) console.error("Error saving custom list:", error);
+            
+            console.log("💾 Saving to Supabase:", payload);
+            
+            const { data, error } = await supabase
+              .from('custom_lists')
+              .upsert(payload, { onConflict: 'id' });
+            
+            if (error) {
+                console.error("❌ Error saving custom list:", error);
+                alert("Save failed: " + error.message);
+            } else {
+                console.log("✅ Saved successfully:", data);
+            }
         }
     }
     
@@ -693,13 +768,9 @@ function App() {
     const newStatus = editingList.status === 'published' ? 'draft' : 'published';
     const updatedList = { ...editingList, status: newStatus };
     
-    // Immediate Local Update for editing state
     setEditingList(updatedList);
-    
-    // CRITICAL: Immutable update to the main list state so tabs update immediately
     setCustomLists(prev => prev.map(l => l.id === updatedList.id ? updatedList : l));
 
-    // Supabase Update
     if (session) {
         await supabase.from('custom_lists').update({ status: newStatus }).eq('id', updatedList.id);
     }
@@ -807,10 +878,8 @@ function App() {
     const watchedEntries = Object.entries(userDb).filter(([_, log]) => (log as UserFilmLog).watched);
     const totalWatched = watchedEntries.length;
     
-    // Create a Map for O(1) film lookup
     const allFilmsMap = new Map<string, Film>();
     
-    // 1. Index Archive Films
     ARCHIVE_CATEGORIES.forEach(cat => {
         cat.lists.forEach(l => {
             l.tiers.forEach(t => t.films.forEach(f => allFilmsMap.set(f.id, f)));
@@ -818,17 +887,14 @@ function App() {
         });
     });
 
-    // 2. Index Custom/UGC Films
     customLists.forEach(l => {
         l.tiers.forEach(t => t.films.forEach(f => allFilmsMap.set(f.id, f)));
         l.seriesTiers?.forEach(t => t.films.forEach(f => allFilmsMap.set(f.id, f)));
     });
 
-    // 3. Count Completed Journeys (Archive + Custom)
     const allLists = [...ARCHIVE_CATEGORIES.flatMap(c => c.lists).map(l => masterOverrides[l.id] || l), ...customLists];
     let totalCompleted = 0;
     allLists.forEach(list => {
-        // Only count lists saved in vault or created by user, and fully watched
         if ((vaultIds.includes(list.id) || list.isCustom) && getListProgress(list) >= 100) {
             totalCompleted++;
         }
@@ -837,13 +903,11 @@ function App() {
     let totalRuntime = 0;
     watchedEntries.forEach(([filmId]) => {
         const film = allFilmsMap.get(filmId);
-        // Default to 120 mins if runtime missing
         totalRuntime += (film?.runtime || 120);
     });
 
     const totalHours = Math.floor(totalRuntime / 60);
 
-    // ... simplified logic for brevity, core logic same as before ...
     let rank = "INITIATE";
     if (totalWatched > 10) rank = "ADEPT";
     if (totalWatched > 50) rank = "MASTER";
@@ -904,10 +968,8 @@ function App() {
   // --- MAIN RENDER BLOCK ---
   return (
     <>
-      {/* 1. AUTH SCREEN (Modal/Overlay) */}
       {view === 'auth' && <AuthScreen onAuth={handleAuth} onCancel={() => setView('home')} />}
 
-      {/* 2. GLOBAL SEARCH */}
       {isSearchOpen && (
            <div className="fixed inset-0 z-[60] bg-[#F5C71A]/95 backdrop-blur-md flex flex-col p-8 animate-fadeIn">
               <div className="w-full max-w-4xl mx-auto flex flex-col gap-8 h-full">
@@ -935,14 +997,11 @@ function App() {
            </div>
         )}
 
-      {/* 3. FILM MODAL */}
       {selectedFilm && !currentList && <FilmModal film={selectedFilm} log={userDb[selectedFilm.id]} onUpdateLog={handleUpdateLog} onClose={() => setSelectedFilm(null)} onNavigateToList={handleNavigateToList} listTitle="Global Search" />}
 
-      {/* 4. MAIN LAYOUT (Wraps Home/Vault) */}
       {view !== 'auth' && !currentList && (
         <MainLayout activeView={view as 'home' | 'vault'} session={session} isAdmin={isAdmin} onLogout={handleLogout} onOpenSearch={() => setIsSearchOpen(true)} onToggleAdmin={() => setIsAdmin(!isAdmin)} onNavigate={handleNavigate}>
             
-            {/* VIEW: ARCHIVE (HOME) */}
             {view === 'home' && (
                <div className="animate-fadeIn">
                   {ORDERED_CATEGORIES.map((category) => {
@@ -982,7 +1041,6 @@ function App() {
                </div>
             )}
 
-            {/* VIEW: VAULT */}
             {view === 'vault' && (
                 <div className="space-y-16 animate-fadeIn">
                     <div className="w-full max-w-5xl mx-auto bg-black text-[#F5C71A] shadow-[12px_12px_0px_0px_rgba(0,0,0,0.2)] border-4 border-black flex flex-col md:flex-row overflow-hidden relative">
@@ -1006,7 +1064,6 @@ function App() {
                        </div>
                     </div>
 
-                    {/* COMPLETED JOURNEYS */}
                     {completed.length > 0 && (
                         <section className="space-y-6">
                             <div className="flex items-center gap-4"><div className="h-6 w-6 bg-yellow-600 border-2 border-black"></div><h2 className="text-2xl md:text-3xl font-black uppercase tracking-widest border-b-4 border-black pb-2 w-full text-yellow-700">Completed Journeys</h2></div>
@@ -1075,7 +1132,6 @@ function App() {
         </MainLayout>
       )}
 
-      {/* 5. LIST DETAIL VIEW (Overrides Layout when selected) */}
       {currentList && (
         <div className="min-h-screen w-full bg-[#F5C71A] text-black pb-20 overflow-x-hidden">
             <nav className="fixed top-0 left-0 w-full z-40 px-6 py-4 flex justify-between items-start pointer-events-none">
@@ -1120,7 +1176,6 @@ function App() {
                     <input autoFocus type="text" placeholder="Search database or type custom..." className="w-full p-4 text-xl font-mono border-2 border-black bg-white mb-4 uppercase" value={tierSearchQuery} onChange={(e) => setTierSearchQuery(e.target.value)} />
                     <div className="max-h-60 overflow-y-auto border-2 border-black bg-white">
                        {tierSearchQuery.length > 0 && <button onClick={() => handleAddFilmToTier(createFilm(tierSearchQuery, new Date().getFullYear(), "Sherpa Selection"))} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b font-bold">+ ADD CUSTOM: "{tierSearchQuery}"</button>}
-                       {/* Prioritize TMDB Results */}
                        {tierSearchResults.map(film => (
                          <button key={film.id} onClick={() => handleAddFilmToTier(film)} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b flex items-center gap-4">
                             {film.posterUrl && <img src={film.posterUrl} className="w-10 h-14 object-cover border border-black" />}
@@ -1130,7 +1185,6 @@ function App() {
                             </div>
                          </button>
                        ))}
-                       {/* Fallback to Local DB if no search results yet */}
                        {tierSearchResults.length === 0 && getAllFilms().filter(f => f.title.toLowerCase().includes(tierSearchQuery.toLowerCase())).map(film => (
                          <button key={film.id} onClick={() => handleAddFilmToTier(film)} className="w-full text-left p-3 hover:bg-black hover:text-[#F5C71A] border-b flex items-center gap-4">
                             {film.posterUrl && <img src={film.posterUrl} className="w-10 h-14 object-cover border border-black" />}
