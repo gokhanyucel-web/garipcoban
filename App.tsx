@@ -9,12 +9,10 @@ import { getDirectorPicks, searchMovies } from './services/tmdb';
 import { Search, Twitter, Instagram, Mail, ShieldAlert, Save, Trash2, LogOut, User, MinusCircle, Check } from 'lucide-react';
 
 // --- CONSTANTS REORDERING ---
-// Directors -> Movements -> Genres -> Thematic (mapped as Eras/Thematic)
 const ORDERED_CATEGORIES: ListCategory[] = [
     ARCHIVE_CATEGORIES.find(c => c.title === "THE GRANDMASTERS")!,
     ARCHIVE_CATEGORIES.find(c => c.title === "MOVEMENTS & WORLD")!,
     ARCHIVE_CATEGORIES.find(c => c.title === "GENRES & UNIVERSES")!,
-    // Rename "THEMATIC" to "DECADE DIARIES & THEMES" visually in render, or keep as is if sticking to constants
     ARCHIVE_CATEGORIES.find(c => c.title === "THEMATIC")!
 ];
 
@@ -531,11 +529,14 @@ function App() {
 
   const handleForkList = () => {
     if (!selectedList) return;
+    
+    // Admin Override Check
     if (isAdmin && !selectedList.isCustom) {
         setEditingList(JSON.parse(JSON.stringify(selectedList)));
         setIsEditorMode(true);
         return;
     }
+    
     const existingFork = customLists.find(l => l.originalListId === selectedList.id);
     if (existingFork) {
         if(window.confirm("You already have a remix of this journey. Would you like to open it?")) {
@@ -545,19 +546,25 @@ function App() {
         }
         return;
     }
+    
+    // CRITICAL FIX: Deep Clone to prevent reference mutations on original list
+    const sourceList = JSON.parse(JSON.stringify(selectedList)) as CuratedList;
+    
     const newId = `custom_${Date.now()}`;
     const forkedList: CuratedList = {
-      ...selectedList,
+      ...sourceList, // Deep copied content
       id: newId,
-      title: `${selectedList.title} (Remix)`,
+      title: `${sourceList.title} (Remix)`,
       subtitle: "My Custom Journey",
       author: profile.name, 
       privacy: 'public', 
-      originalListId: selectedList.id,
+      originalListId: selectedList.id, // Keep reference to original ID
       isCustom: true,
-      sherpaNotes: {},
+      sherpaNotes: sourceList.sherpaNotes || {},
       status: 'draft'
     };
+    
+    // Add to state immediately
     setCustomLists(prev => [...prev, forkedList]);
     setVaultIds(prev => [...prev, newId]); 
     setSelectedList(forkedList);
@@ -568,42 +575,20 @@ function App() {
   const handleSaveList = async () => {
     if (!editingList) return;
     
-    // CRITICAL: Remix Logic Fix
-    // If editing a master list AND NOT ADMIN, force create new custom list
-    // OR if editing a master list AND ADMIN, but explicitly want to fork/remix
-    // We treat it as custom if it was already custom OR if we are forcing a fork
-    
     let listToSave = { ...editingList };
-    let isNewRemix = false;
 
-    // If we are editing a master list source (isCustom is false), we MUST convert it to a custom list unless we are explicitly in Admin Override mode.
-    // However, the UI logic sets isEditorMode only.
-    // Safety check: If isAdmin is false, we NEVER overwrite master.
-    // If isAdmin is true, we assume they might want to overwrite if they didn't explicitly Fork.
-    // BUT, the `handleForkList` already handles creating the copy structure.
-    // The issue is if `editingList` ID still points to a master list ID.
-    
-    // If the list ID is a known master list ID (not starting with 'custom_'), we must check permissions.
-    if (!listToSave.id.startsWith('custom_')) {
-        if (!isAdmin) {
-            // Should not happen via UI, but safety first
-            console.error("Unauthorized attempt to save master list");
-            return;
-        }
-        // Admin saving master list
-        setMasterOverrides(prev => ({...prev, [listToSave.id]: listToSave}));
-        if (session) {
-             const payload = {
-                 list_id: listToSave.id,
-                 content: listToSave,
-                 updated_at: new Date().toISOString()
-             };
-             await supabase.from('master_overrides').upsert(payload, { onConflict: 'list_id' });
-        }
-    } else {
-        // Saving a Custom List (Draft/Published/Remix)
-        setCustomLists(prev => prev.map(l => l.id === listToSave.id ? listToSave : l));
+    // Ensure list is in customLists if it has a custom ID
+    if (listToSave.id.startsWith('custom_')) {
+        // Update Local State Immutably
+        setCustomLists(prev => {
+            const exists = prev.find(l => l.id === listToSave.id);
+            if (exists) {
+                return prev.map(l => l.id === listToSave.id ? listToSave : l);
+            }
+            return [...prev, listToSave];
+        });
         
+        // Supabase Save
         if (session) {
             const payload = {
                 id: listToSave.id,
@@ -622,6 +607,17 @@ function App() {
             };
             const { error } = await supabase.from('custom_lists').upsert(payload);
             if (error) console.error("Error saving custom list:", error);
+        }
+    } else if (isAdmin) {
+        // Admin Master Override
+        setMasterOverrides(prev => ({...prev, [listToSave.id]: listToSave}));
+        if (session) {
+             const payload = {
+                 list_id: listToSave.id,
+                 content: listToSave,
+                 updated_at: new Date().toISOString()
+             };
+             await supabase.from('master_overrides').upsert(payload, { onConflict: 'list_id' });
         }
     }
     
