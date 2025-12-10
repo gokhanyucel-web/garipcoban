@@ -1,34 +1,54 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { AI_Suggestion } from '../types';
+import { AI_Suggestion, FilmAnalysis } from '../types';
 
-// Interface for the curator analysis result
 interface AIAnalysisResult {
   analysis: string;
   trivia: string;
   vibes: string[];
 }
 
-export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion[]> => {
+// YARDIMCI: Güvenli JSON Temizleyici
+const cleanAndParseJSON = (text: string) => {
   try {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.API_KEY;
-    if (!apiKey) {
-      console.warn("API Key not found in environment variables.");
-      return [];
-    }
+    // Markdown formatındaki (```json ... ```) fazlalıkları temizle
+    let clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    // Bazen AI en başa veya sona gereksiz karakter koyabilir, onları da temizleyelim
+    if (clean.startsWith('`')) clean = clean.slice(1);
+    if (clean.endsWith('`')) clean = clean.slice(0, -1);
+    return JSON.parse(clean);
+  } catch (e) {
+    console.error("JSON Parse Hatası:", e);
+    return null;
+  }
+};
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    
-    const result = await model.generateContent(`
-      Generate a list of 5 films fitting the theme, director, or vibe of: "${query}". 
-      Return valid JSON array of objects with title, year, director. No markdown formatting.
-    `);
+export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion[]> => {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) { console.warn("API Key Eksik!"); return []; }
 
-    const text = result.response.text();
-    // JSON temizliği (Markdown backtick'lerini temizle)
-    const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+  const payload = {
+    contents: [{
+      parts: [{
+        text: `Generate a list of 5 films fitting the theme, director, or vibe of: "${query}". 
+               Return strictly a JSON array of objects with keys: "title", "year", "director". 
+               Do NOT use markdown. Just raw JSON.`
+      }]
+    }]
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
     
-    return JSON.parse(cleanText) as AI_Suggestion[];
+    if (!rawText) return [];
+    return cleanAndParseJSON(rawText) || [];
 
   } catch (error) {
     console.error("Gemini API Error:", error);
@@ -37,34 +57,43 @@ export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion
 };
 
 export const getFilmAnalysis = async (title: string, director: string, year: number, context?: string): Promise<AIAnalysisResult | null> => {
-  try {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.API_KEY;
-    if (!apiKey) return null;
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) return null;
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    
-    const promptContext = context 
-        ? `CONTEXT: This film is part of a curated list titled "${context}". Explain why it fits THIS specific list.` 
-        : `CONTEXT: General cinematic analysis.`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  
+  const promptContext = context 
+    ? `CONTEXT: This film is part of a curated list titled "${context}". Explain why it fits THIS specific list.` 
+    : `CONTEXT: General cinematic analysis.`;
 
-    const result = await model.generateContent(`
-      Analyze the film "${title}" (${year}) directed by ${director}.
+  const prompt = `Analyze the film "${title}" (${year}) directed by ${director}.
       
       ${promptContext}
 
-      Output MUST be valid JSON with these keys:
+      Output MUST be valid JSON with these exact keys:
       1. analysis: A 2-sentence sophisticated analysis explaining its significance in this context.
       2. trivia: One obscure production fact.
-      3. vibes: Array of 3 film titles sharing the specific mood (not same director).
+      3. vibes: Array of exactly 3 other film titles sharing the specific mood (do NOT list films by the same director).
       
-      Return ONLY JSON. No markdown.
-    `);
+      Return ONLY raw JSON. No markdown formatting.`;
 
-    const text = result.response.text();
-    const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    return JSON.parse(cleanText) as AIAnalysisResult;
+  const payload = {
+    contents: [{ parts: [{ text: prompt }] }]
+  };
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!rawText) return null;
+    return cleanAndParseJSON(rawText);
+
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
     return null;
