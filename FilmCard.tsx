@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Film, UserFilmLog } from '../types';
 import { getRealPoster } from '../services/tmdb';
-import { getFilmAnalysis } from '../services/geminiService';
 
 interface FilmCardProps {
   film: Film;
@@ -18,9 +17,7 @@ const FilmCard: React.FC<FilmCardProps> = ({ film, log, onClick, isEditable, onR
   const isWatched = log?.watched || false;
   const rating = log?.rating || 0;
   const [displayPoster, setDisplayPoster] = useState(film.posterUrl);
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [aiData, setAiData] = useState<{ analysis: string, trivia: string, vibes: string[] } | null>(null);
-  const [loadingAi, setLoadingAi] = useState(false);
+  const [showWhy, setShowWhy] = useState(false);
 
   useEffect(() => {
     if (film.posterUrl && film.posterUrl.includes("placehold.co")) {
@@ -32,30 +29,10 @@ const FilmCard: React.FC<FilmCardProps> = ({ film, log, onClick, isEditable, onR
     }
   }, [film.title, film.year, film.posterUrl]);
 
-  const handleToggleExpand = async (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const newState = !isExpanded;
-      setIsExpanded(newState);
-      
-      if (newState && !aiData) {
-          setLoadingAi(true);
-          // If it's a custom entry, mock the data, otherwise fetch
-          if (film.isCustomEntry) {
-              setAiData({ analysis: film.plot || "User curated entry.", trivia: "No trivia available.", vibes: [] });
-              setLoadingAi(false);
-          } else {
-              const data = await getFilmAnalysis(film.title, film.director, film.year);
-              setAiData(data);
-              setLoadingAi(false);
-          }
-      }
-  };
-
   return (
     <div 
       className={`relative group ${isEditable ? 'opacity-100 z-50' : 'z-10'}`}
-      style={{ zIndex: isExpanded ? 999 : (isEditable ? 50 : 10) }}
+      style={{ zIndex: showWhy ? 999 : (isEditable ? 50 : 10) }}
       draggable={isEditable}
       onDragStart={(e) => { if(onDragStart) onDragStart(e, film); }}
     >
@@ -78,10 +55,10 @@ const FilmCard: React.FC<FilmCardProps> = ({ film, log, onClick, isEditable, onR
         {/* WHY THIS FILM TOGGLE */}
         {!isEditable && (
             <button 
-                onClick={handleToggleExpand}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowWhy(!showWhy); }}
                 className="absolute top-0 left-0 z-40 bg-black text-white text-[9px] px-1.5 py-0.5 font-bold uppercase tracking-wider hover:bg-white hover:text-black border-r border-b border-black"
             >
-                {isExpanded ? "Close" : "Why?"}
+                {showWhy ? "Close" : "Why?"}
             </button>
         )}
 
@@ -100,42 +77,34 @@ const FilmCard: React.FC<FilmCardProps> = ({ film, log, onClick, isEditable, onR
         <span className={`text-[10px] font-bold opacity-80 border px-1 rounded-sm mt-1 select-none pointer-events-none transition-colors duration-300 ${isWatched ? 'border-[#F5C71A]' : 'border-black'}`}>{film.year}</span>
 
         {/* EXPANDED INFO SECTION */}
-        {isExpanded && (
+        {showWhy && (
             <div 
                 className="absolute top-full left-[-2px] w-[calc(100%+4px)] bg-[#F5C71A] border-2 border-black border-t-0 p-3 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] text-left flex flex-col gap-3 text-black cursor-default"
                 style={{ zIndex: 999 }}
                 onClick={(e) => e.stopPropagation()}
             >
-                {loadingAi ? (
-                    <div className="text-[10px] font-mono animate-pulse">CONSULTING ARCHIVES...</div>
-                ) : (
-                    <>
-                        {/* ANALYSIS */}
-                        <div>
-                            <h4 className="text-[9px] font-black uppercase tracking-widest mb-1 opacity-60">Why This Film?</h4>
-                            <p className="text-[10px] font-medium leading-tight">{aiData?.analysis}</p>
-                        </div>
-                        
-                        {/* TRIVIA */}
-                        {aiData?.trivia && (
-                            <div className="border-t border-black/10 pt-2">
-                                <h4 className="text-[9px] font-black uppercase tracking-widest mb-1 opacity-60">Trivia</h4>
-                                <p className="text-[10px] font-mono opacity-80 leading-tight">{aiData.trivia}</p>
-                            </div>
-                        )}
+                {/* ANALYSIS */}
+                <div>
+                    <h4 className="text-[9px] font-black uppercase tracking-widest mb-1 opacity-60">Why This Film?</h4>
+                    <p className="text-[10px] font-medium leading-tight">{film.briefing || "A cinematic essential."}</p>
+                </div>
+                
+                {/* TRIVIA */}
+                <div className="border-t border-black/10 pt-2">
+                    <h4 className="text-[9px] font-black uppercase tracking-widest mb-1 opacity-60">Trivia</h4>
+                    <p className="text-[10px] font-mono opacity-80 leading-tight">Director: {film.director} • Year: {film.year}</p>
+                </div>
 
-                        {/* VIBES */}
-                        {aiData?.vibes && aiData.vibes.length > 0 && (
-                            <div className="border-t border-black/10 pt-2">
-                                <h4 className="text-[9px] font-black uppercase tracking-widest mb-1 opacity-60">Curator Recommends</h4>
-                                <div className="flex flex-wrap gap-1">
-                                    {aiData.vibes.map(v => (
-                                        <span key={v} className="px-1.5 py-0.5 bg-black text-[#F5C71A] text-[8px] font-bold uppercase">{v}</span>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </>
+                {/* VIBES */}
+                {(film.screenplay && film.screenplay.length > 0 && film.screenplay[0] !== "Unknown") && (
+                    <div className="border-t border-black/10 pt-2">
+                        <h4 className="text-[9px] font-black uppercase tracking-widest mb-1 opacity-60">Similar Vibes</h4>
+                        <div className="flex flex-wrap gap-1">
+                            {film.screenplay.map(v => (
+                                <span key={v} className="px-1.5 py-0.5 bg-black text-[#F5C71A] text-[8px] font-bold uppercase">{v}</span>
+                            ))}
+                        </div>
+                    </div>
                 )}
             </div>
         )}
