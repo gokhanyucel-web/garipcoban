@@ -1,54 +1,49 @@
+import { GoogleGenAI, Type } from "@google/genai";
 import { AI_Suggestion, FilmAnalysis } from '../types';
 
+// Interface for the curator analysis result
 interface AIAnalysisResult {
   analysis: string;
   trivia: string;
   vibes: string[];
 }
 
-// YARDIMCI: Güvenli JSON Temizleyici
-const cleanAndParseJSON = (text: string) => {
-  try {
-    // Markdown formatındaki (```json ... ```) fazlalıkları temizle
-    let clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    // Bazen AI en başa veya sona gereksiz karakter koyabilir, onları da temizleyelim
-    if (clean.startsWith('`')) clean = clean.slice(1);
-    if (clean.endsWith('`')) clean = clean.slice(0, -1);
-    return JSON.parse(clean);
-  } catch (e) {
-    console.error("JSON Parse Hatası:", e);
-    return null;
-  }
-};
-
 export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion[]> => {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) { console.warn("API Key Eksik!"); return []; }
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-
-  const payload = {
-    contents: [{
-      parts: [{
-        text: `Generate a list of 5 films fitting the theme, director, or vibe of: "${query}". 
-               Return strictly a JSON array of objects with keys: "title", "year", "director". 
-               Do NOT use markdown. Just raw JSON.`
-      }]
-    }]
-  };
-
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const apiKey = "senin_yeni_api_keyin_buraya_gelecek"; // Burayı manuel değiştirmen gerekebilir ama Vercel env'den alacaksa process.env kalsın
+    if (!apiKey) {
+      console.warn("API Key not found in environment variables.");
+      return [];
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+    
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: `Generate a list of 5 films fitting the theme, director, or vibe of: "${query}". 
+      Return valid JSON only.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    title: { type: Type.STRING },
+                    year: { type: Type.NUMBER },
+                    director: { type: Type.STRING }
+                },
+                required: ["title", "year", "director"]
+            }
+        }
+      }
     });
 
-    const data = await response.json();
-    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const text = response.text;
+    if (!text) return [];
     
-    if (!rawText) return [];
-    return cleanAndParseJSON(rawText) || [];
+    const data = JSON.parse(text) as AI_Suggestion[];
+    return data;
 
   } catch (error) {
     console.error("Gemini API Error:", error);
@@ -56,44 +51,36 @@ export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion
   }
 };
 
-export const getFilmAnalysis = async (title: string, director: string, year: number, context?: string): Promise<AIAnalysisResult | null> => {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) return null;
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-  
-  const promptContext = context 
-    ? `CONTEXT: This film is part of a curated list titled "${context}". Explain why it fits THIS specific list.` 
-    : `CONTEXT: General cinematic analysis.`;
-
-  const prompt = `Analyze the film "${title}" (${year}) directed by ${director}.
-      
-      ${promptContext}
-
-      Output MUST be valid JSON with these exact keys:
-      1. analysis: A 2-sentence sophisticated analysis explaining its significance in this context.
-      2. trivia: One obscure production fact.
-      3. vibes: Array of exactly 3 other film titles sharing the specific mood (do NOT list films by the same director).
-      
-      Return ONLY raw JSON. No markdown formatting.`;
-
-  const payload = {
-    contents: [{ parts: [{ text: prompt }] }]
-  };
-
+export const getFilmAnalysis = async (title: string, director: string, year: number): Promise<AIAnalysisResult | null> => {
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) return null;
+
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: `Analyze the film "${title}" (${year}) directed by ${director}.
+      
+      1. analysis: Write a 2-sentence cultural analysis explaining its significance, directorial style, or impact on cinema history. Be intellectual but accessible. NO marketing language.
+      2. trivia: Provide one fascinating, obscure production fact or trivia about the film.
+      3. vibes: List exactly 3 other film titles that share the exact specific mood, atmosphere, or thematic resonance. Do not include this film itself.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            analysis: { type: Type.STRING },
+            trivia: { type: Type.STRING },
+            vibes: { type: Type.ARRAY, items: { type: Type.STRING } }
+          },
+          required: ["analysis", "trivia", "vibes"],
+        }
+      }
     });
 
-    const data = await response.json();
-    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!rawText) return null;
-    return cleanAndParseJSON(rawText);
-
+    const text = response.text;
+    if (!text) return null;
+    return JSON.parse(text) as AIAnalysisResult;
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
     return null;

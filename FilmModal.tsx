@@ -44,7 +44,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
           setRealPoster(film.posterUrl || null);
       }
 
-      // Plot kontrolü (Eğer plot yoksa TMDB'den gelen overview'i kullanmak için)
+      // If plot is missing, ensure we get details to populate the right panel
       if (!film.plot || film.plot.length < 10) {
           getRealCredits(film.title, film.year).then(data => {
               if (data) setRealDetails(data);
@@ -56,7 +56,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
          setAiData({ analysis: film.plot || "Custom entry curated by user.", trivia: "Added via Custom List.", vibes: [] });
       } else {
         setLoading(true);
-        // List Title'ı context olarak gönderiyoruz
+        // Call AI with full context including List Title
         getFilmAnalysis(film.title, film.director, film.year, listTitle).then(data => { 
             setAiData(data); 
             setLoading(false); 
@@ -80,7 +80,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   const displayCast = realDetails?.cast || film.cast;
   const displayDop = realDetails?.dop || [];
 
-  // Right Side Data 
+  // Right Side Data (Prioritize Real Details for facts, AI for insights)
   const displaySynopsis = realDetails?.overview || film.plot || "No details available.";
   const displayVoteAverage = realDetails?.vote_average ? realDetails.vote_average.toFixed(1) : (film.imdbScore ? film.imdbScore.toString() : "-");
   
@@ -109,7 +109,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
         <button onClick={onClose} className="absolute top-4 right-4 z-20 text-black hover:bg-black hover:text-[#F5C71A] w-8 h-8 border-2 border-black flex items-center justify-center font-bold transition-colors">X</button>
         <div className="flex flex-col md:flex-row gap-8">
           
-          {/* LEFT COLUMN */}
+          {/* LEFT COLUMN: Poster, User Actions, Credits */}
           <div className="md:w-1/3 flex-shrink-0 flex flex-col items-center md:items-start space-y-4">
             <img src={displayImage || ''} className="w-full border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] object-cover" />
             
@@ -130,9 +130,13 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     <span className="opacity-70">IMDB</span>
                     <span className="text-sm">{displayVoteAverage}</span>
                 </div>
+                <div className="flex-1 bg-black text-[#F5C71A] border border-[#F5C71A] p-1 flex items-center justify-center gap-2">
+                    <span className="opacity-70">LB</span>
+                    <span className="text-sm">{film.letterboxdScore ? film.letterboxdScore : '-'}</span>
+                </div>
             </div>
 
-            {/* CREDITS */}
+            {/* CREDITS BOX */}
             <div className="w-full text-black border-2 border-black bg-white/20 p-3 text-sm space-y-2">
                <div className="grid grid-cols-[80px_1fr] gap-2 border-b border-black/20 pb-2">
                   <span className="font-bold uppercase opacity-70">Director</span>
@@ -143,13 +147,25 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                   <span className="font-medium text-xs leading-tight">{displayCast && displayCast.length > 0 ? displayCast.slice(0, 3).join(', ') : '-'}</span>
                </div>
                <div className="grid grid-cols-[80px_1fr] gap-2 border-b border-black/20 pb-2">
+                  <span className="font-bold uppercase opacity-70">Writer</span>
+                  <span className="font-medium italic">{displayScreenplay ? displayScreenplay.join(', ') : '-'}</span>
+               </div>
+               <div className="grid grid-cols-[80px_1fr] gap-2 border-b border-black/20 pb-2">
+                  <span className="font-bold uppercase opacity-70">DOP</span>
+                  <span className="font-medium">{displayDop.length > 0 ? displayDop.join(', ') : '-'}</span>
+               </div>
+               <div className="grid grid-cols-[80px_1fr] gap-2 border-b border-black/20 pb-2">
+                  <span className="font-bold uppercase opacity-70">Music</span>
+                  <span className="font-medium italic">{displayMusic ? displayMusic.join(', ') : '-'}</span>
+               </div>
+               <div className="grid grid-cols-[80px_1fr] gap-2">
                   <span className="font-bold uppercase opacity-70">Runtime</span>
                   <span className="font-bold">{displayRuntime}m</span>
                </div>
             </div>
           </div>
 
-          {/* RIGHT COLUMN */}
+          {/* RIGHT COLUMN: Content */}
           <div className="md:w-2/3 flex-grow flex flex-col gap-6">
             <header className="border-b-4 border-black pb-4">
               <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter leading-none mb-2">{film.title}</h2>
@@ -185,6 +201,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                         </p>
                     </div>
                     
+                    {/* TRIVIA BOX */}
                     {(aiData?.trivia || loading) && (
                         <div className="bg-black/5 p-4 border-2 border-black/10 border-dashed">
                             <h3 className="font-black text-xs mb-1 uppercase">★ Trivia</h3>
@@ -193,7 +210,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     )}
                 </div>
 
-                {/* VIBES */}
+                {/* AI VIBES (CURATOR RECOMMENDS) */}
                 {aiData?.vibes && aiData.vibes.length > 0 && (
                     <div className="pt-6 border-t-4 border-black">
                         <h3 className="font-black text-lg mb-4 uppercase">Curator Recommends (Vibes)</h3>
@@ -203,6 +220,18 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                                     <div className="w-2 h-2 bg-black"></div>
                                     <span className="font-bold uppercase text-lg">{vibe}</span>
                                 </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* THEMES (KEYWORDS) */}
+                {realDetails?.keywords && realDetails.keywords.length > 0 && (
+                    <div className="mt-4 pt-4 border-t-2 border-black/20">
+                        <h3 className="font-black text-xs mb-2 uppercase tracking-widest opacity-60">THEMES</h3>
+                        <div className="flex flex-wrap gap-2">
+                            {realDetails.keywords.map(k => (
+                                <span key={k} className="px-2 py-1 border border-black text-[10px] font-bold uppercase hover:bg-black hover:text-[#F5C71A] cursor-default">#{k}</span>
                             ))}
                         </div>
                     </div>
