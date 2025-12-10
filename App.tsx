@@ -848,13 +848,16 @@ function App() {
   const sherpaIdentity = calculateSherpaIdentity();
 
   const getVaultLists = () => {
-    const myLists = [...ARCHIVE_CATEGORIES.flatMap(c => c.lists).map(l => masterOverrides[l.id] || l), ...customLists].filter(list => vaultIds.includes(list.id));
+    const myLists = [...ARCHIVE_CATEGORIES.flatMap(c => c.lists).map(l => masterOverrides[l.id] || l), ...customLists];
+    // Filter: Include if in Vault OR if it's my custom list
+    const visibleLists = myLists.filter(list => vaultIds.includes(list.id) || list.isCustom);
+    
     const active: CuratedList[] = [];
     const drafts: CuratedList[] = [];
     const published: CuratedList[] = [];
     const completed: CuratedList[] = [];
     
-    myLists.forEach(list => {
+    visibleLists.forEach(list => {
       const prog = getListProgress(list);
       if (prog >= 100 && !list.isCustom) {
           completed.push(list);
