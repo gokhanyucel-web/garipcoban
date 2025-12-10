@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './services/supabase';
 import { Film, CuratedList, UserDatabase, UserFilmLog, Tier, Badge, AI_Suggestion, SortOption, ListCategory } from './types';
 import { ARCHIVE_CATEGORIES, getAllFilms, createFilm, BADGE_TITLES, getHash, INITIATE_SYNONYMS, ADEPT_SYNONYMS } from './constants';
@@ -88,41 +88,6 @@ const MainLayout: React.FC<any> = ({ children, activeView, session, isAdmin, onL
     </footer>
   </div>
 );
-
-const TimelineView = ({ tiers, userDb, onSelectFilm, onUpdateLog }: { tiers: Tier[], userDb: UserDatabase, onSelectFilm: (f: Film) => void, onUpdateLog: (id: string, updates: any) => void }) => {
-   let allFilms: Film[] = [];
-   tiers.forEach(t => allFilms.push(...t.films));
-   allFilms.sort((a,b) => a.year - b.year);
-
-   return (
-      <div className="relative w-full max-w-4xl mx-auto py-12 px-4">
-           <div className="absolute left-6 md:left-1/2 top-0 bottom-0 w-1 md:w-2 bg-kubrick-black md:-translate-x-1/2"></div>
-           <div className="flex flex-col gap-8 md:gap-12">
-              {allFilms.map((film, index) => {
-                  const isLeft = index % 2 === 0;
-                  return (
-                      <div key={film.id} className={`flex items-center w-full ${isLeft ? 'md:flex-row-reverse' : 'md:flex-row'}`}>
-                           <div className="hidden md:block w-1/2"></div>
-                           <div className="absolute left-6 md:left-1/2 w-4 h-4 md:w-6 md:h-6 bg-kubrick-yellow border-4 border-kubrick-black rounded-full z-10 md:-translate-x-1/2 translate-x-[-0.35rem] md:translate-x-[-0.6rem]"></div>
-                           <div className={`w-full md:w-1/2 pl-12 md:pl-0 ${isLeft ? 'md:pr-12 md:text-right text-left' : 'md:pl-12 md:text-left text-left'}`}>
-                               <div className={`inline-block`}>
-                                   <div className={`mb-2 font-black text-2xl md:text-3xl opacity-50 font-mono`}>{film.year}</div>
-                                   <FilmCard 
-                                      film={film} 
-                                      log={userDb[film.id]} 
-                                      onClick={() => onSelectFilm(film)} 
-                                      isEditable={false} 
-                                      onUpdateLog={onUpdateLog}
-                                   />
-                               </div>
-                           </div>
-                      </div>
-                  )
-              })}
-           </div>
-      </div>
-   );
-};
 
 // --- MAIN APP COMPONENT ---
 
@@ -218,42 +183,6 @@ function App() {
     if (tierSearchQuery.length > 2) { const timer = setTimeout(() => { searchMovies(tierSearchQuery).then(setTierSearchResults); }, 300); return () => clearTimeout(timer); } 
     else setTierSearchResults([]);
   }, [tierSearchQuery]);
-
-  // SAFE CALCULATION OF VAULT LISTS (Replaces the crashing function)
-  const vaultListsData = useMemo(() => {
-    const myLists = [...ARCHIVE_CATEGORIES.flatMap(c => c.lists).map(l => masterOverrides[l.id] || l), ...customLists];
-    const visibleLists = myLists.filter(list => vaultIds.includes(list.id) || list.isCustom);
-    
-    const active: CuratedList[] = [];
-    const drafts: CuratedList[] = [];
-    const published: CuratedList[] = [];
-    const completed: CuratedList[] = [];
-    
-    // Helper to calculate progress locally
-    const getProg = (list: CuratedList) => {
-        let allFilms: Film[] = [];
-        list.tiers.forEach(tier => allFilms.push(...tier.films));
-        if (list.seriesTiers) list.seriesTiers.forEach(tier => allFilms.push(...tier.films));
-        if (allFilms.length === 0) return 0;
-        const watchedCount = allFilms.filter(film => userDb[film.id]?.watched).length;
-        return Math.round((watchedCount / allFilms.length) * 100);
-    };
-
-    visibleLists.forEach(list => {
-      const prog = getProg(list);
-      if (prog >= 100 && !list.isCustom) {
-          completed.push(list);
-      } else {
-          if (list.isCustom) {
-              if (list.status === 'published') published.push(list);
-              else drafts.push(list);
-          } else {
-              active.push(list);
-          }
-      }
-    });
-    return { active, drafts, published, completed };
-  }, [customLists, masterOverrides, vaultIds, userDb]);
 
   const handleAuth = async (mode: 'signin' | 'signup', data: any) => {
     const { email, password, username } = data;
@@ -408,7 +337,6 @@ function App() {
     if (session) await supabase.from('custom_lists').update({ status: newStatus, content: updatedList }).eq('id', updatedList.id);
   };
 
-  // Tier Handlers
   const handleAddTier = (isSeries: boolean) => { if(!editingList) return; const t = isSeries ? (editingList.seriesTiers||[]) : editingList.tiers; if(t.length>=30) return; const n = {level:t.length+1, name:`TIER ${t.length+1}`, films:[]}; const u={...editingList}; if(isSeries) u.seriesTiers=[...(u.seriesTiers||[]),n]; else u.tiers=[...u.tiers,n]; setEditingList(u); };
   const handleRemoveTier = (idx: number, isSeries: boolean) => { if(!editingList) return; const u={...editingList}; if(isSeries && u.seriesTiers) u.seriesTiers=u.seriesTiers.filter((_,i)=>i!==idx); else u.tiers=u.tiers.filter((_,i)=>i!==idx); setEditingList(u); };
   const handleAddFilmToTier = (film: Film) => { if(!editingList || !showTierSearchModal) return; const { tierIndex, isSeries } = showTierSearchModal; const u={...editingList}; const t=isSeries?(u.seriesTiers||[]):u.tiers; if(t[tierIndex].films.length>=6){alert("Max 6");return;} t[tierIndex].films.push(film); setEditingList(u); setShowTierSearchModal(null); setTierSearchQuery(""); setTierSearchResults([]); };
@@ -421,7 +349,6 @@ function App() {
   const getSortedTiers = (tiers: Tier[]) => tiers.map(t => ({ ...t, films: [...t.films].sort((a, b) => sortOption === 'chronological' ? a.year - b.year : 0) }));
   const currentTiers = getSortedTiers(currentTiersBase);
   
-  // Progress Calculation helper used in render
   const getListProgress = (list: CuratedList) => {
     let allFilms: Film[] = [];
     list.tiers.forEach(tier => allFilms.push(...tier.films));
@@ -441,7 +368,6 @@ function App() {
         if ((vaultIds.includes(list.id) || list.isCustom) && getListProgress(list) >= 100) totalCompleted++;
     });
 
-    // Create a Map for O(1) film lookup to get runtimes
     const allFilmsMap = new Map<string, Film>();
     allLists.forEach(l => {
         l.tiers.forEach(t => t.films.forEach(f => allFilmsMap.set(f.id, f)));
@@ -463,13 +389,38 @@ function App() {
   
   const sherpaIdentity = calculateSherpaIdentity();
 
+  const getVaultLists = () => {
+    const myLists = [...ARCHIVE_CATEGORIES.flatMap(c => c.lists).map(l => masterOverrides[l.id] || l), ...customLists];
+    const visibleLists = myLists.filter(list => vaultIds.includes(list.id) || list.isCustom);
+    
+    const active: CuratedList[] = [];
+    const drafts: CuratedList[] = [];
+    const published: CuratedList[] = [];
+    const completed: CuratedList[] = [];
+    
+    visibleLists.forEach(list => {
+      const prog = getListProgress(list);
+      if (prog >= 100 && !list.isCustom) {
+          completed.push(list);
+      } else {
+          if (list.isCustom) {
+              if (list.status === 'published') published.push(list);
+              else drafts.push(list);
+          } else {
+              active.push(list);
+          }
+      }
+    });
+    return { active, drafts, published, completed };
+  };
+  const { active, drafts, published, completed } = getVaultLists();
+
   if (isLoading) return <div className="h-screen w-full bg-[#F5C71A] flex items-center justify-center"><h1 className="text-3xl font-black animate-pulse">LOADING...</h1></div>;
 
   return (
     <>
       {view === 'auth' && <AuthScreen onAuth={handleAuth} onCancel={() => setView('home')} />}
       
-      {/* SEARCH OVERLAY */}
       {isSearchOpen && (
            <div className="fixed inset-0 z-[60] bg-[#F5C71A]/95 p-8 overflow-y-auto">
               <div className="max-w-4xl mx-auto">
@@ -535,17 +486,17 @@ function App() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div>
                             <h3 className="font-bold opacity-50 mb-4">DRAFTS</h3>
-                            {vaultListsData.drafts.map(l => <div key={l.id} onClick={()=>{setSelectedList(l); setEditingList(l); setIsEditorMode(true);}} className="border-2 border-dashed border-black p-4 mb-2 cursor-pointer hover:bg-black hover:text-[#F5C71A] font-black uppercase">{l.title}</div>)}
+                            {drafts.map(l => <div key={l.id} onClick={()=>{setSelectedList(l); setEditingList(l); setIsEditorMode(true);}} className="border-2 border-dashed border-black p-4 mb-2 cursor-pointer hover:bg-black hover:text-[#F5C71A] font-black uppercase">{l.title}</div>)}
                         </div>
                         <div>
                             <h3 className="font-bold opacity-50 mb-4">PUBLISHED</h3>
-                            {vaultListsData.published.map(l => <div key={l.id} onClick={()=>setSelectedList(l)} className="border-4 border-black p-4 mb-2 cursor-pointer hover:bg-black hover:text-[#F5C71A] font-black uppercase">{l.title}</div>)}
+                            {published.map(l => <div key={l.id} onClick={()=>setSelectedList(l)} className="border-4 border-black p-4 mb-2 cursor-pointer hover:bg-black hover:text-[#F5C71A] font-black uppercase">{l.title}</div>)}
                         </div>
                     </div>
 
                     <h2 className="text-3xl font-black uppercase border-b-4 border-black pb-2">ACTIVE JOURNEYS</h2>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {vaultListsData.active.map(l => (
+                        {active.map(l => (
                             <div key={l.id} onClick={()=>setSelectedList(l)} className="border-4 border-black p-4 hover:bg-black hover:text-[#F5C71A] cursor-pointer relative group">
                                 <h3 className="font-black uppercase">{l.title}</h3>
                                 <div className="mt-2 text-xs font-mono">{getListProgress(l)}% COMPLETE</div>
