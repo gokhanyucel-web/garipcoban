@@ -1,16 +1,19 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AI_Suggestion, FilmAnalysis } from '../types';
 
+// Interface for the curator analysis result
+interface AIAnalysisResult {
+  analysis: string;
+  trivia: string;
+  vibes: string[];
+}
+
 export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion[]> => {
   try {
     const apiKey = process.env.API_KEY;
     if (!apiKey) {
       console.warn("API Key not found in environment variables.");
-      return [
-        { title: "Mock Film 1", year: 2024, director: "AI Director" },
-        { title: "Mock Film 2", year: 2023, director: "AI Director" },
-        { title: "Mock Film 3", year: 2022, director: "AI Director" }
-      ];
+      return [];
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -48,7 +51,7 @@ export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion
   }
 };
 
-export const getFilmAnalysis = async (title: string): Promise<FilmAnalysis | null> => {
+export const getFilmAnalysis = async (title: string, director: string, year: number): Promise<AIAnalysisResult | null> => {
   try {
     const apiKey = process.env.API_KEY;
     if (!apiKey) return null;
@@ -56,31 +59,28 @@ export const getFilmAnalysis = async (title: string): Promise<FilmAnalysis | nul
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: `Analyze the film "${title}".
-      1. Summary: Provide a one-sentence logline focusing ONLY on the setup or inciting incident. Do not reveal the ending or the main turn of events.
-      2. Significance: Why does it matter cinematically?
-      3. Fun Fact: One rare production fact.
-      Also verify director, year and top cast.`,
+      contents: `Analyze the film "${title}" (${year}) directed by ${director}.
+      
+      1. analysis: Write a 2-sentence cultural analysis explaining its significance, directorial style, or impact on cinema history. Be intellectual but accessible. NO marketing language.
+      2. trivia: Provide one fascinating, obscure production fact or trivia about the film.
+      3. vibes: List exactly 3 other film titles that share the exact specific mood, atmosphere, or thematic resonance. Do not include this film itself.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            summary: { type: Type.STRING },
-            significance: { type: Type.STRING },
-            funFact: { type: Type.STRING },
-            director: { type: Type.STRING },
-            cast: { type: Type.ARRAY, items: { type: Type.STRING } },
-            year: { type: Type.NUMBER },
+            analysis: { type: Type.STRING },
+            trivia: { type: Type.STRING },
+            vibes: { type: Type.ARRAY, items: { type: Type.STRING } }
           },
-          required: ["summary", "significance", "funFact", "director", "cast", "year"],
+          required: ["analysis", "trivia", "vibes"],
         }
       }
     });
 
     const text = response.text;
     if (!text) return null;
-    return JSON.parse(text) as FilmAnalysis;
+    return JSON.parse(text) as AIAnalysisResult;
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
     return null;

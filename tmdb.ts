@@ -42,7 +42,7 @@ export const getRealPoster = async (title: string, year: number): Promise<string
   return null;
 };
 
-export const getRealCredits = async (title: string, year: number): Promise<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[]} | null> => {
+export const getRealCredits = async (title: string, year: number): Promise<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[], keywords: string[], recommendations: any[], tagline: string} | null> => {
     if (!API_KEY) return null;
     const cacheKey = `${title}-${year}-credits-full`;
     if (creditsCache[cacheKey]) return creditsCache[cacheKey];
@@ -50,7 +50,7 @@ export const getRealCredits = async (title: string, year: number): Promise<{dire
     try {
         const id = await getMovieId(title, year);
         if (id) {
-            const creditsUrl = `${BASE_URL}/movie/${id}?api_key=${API_KEY}&append_to_response=credits`;
+            const creditsUrl = `${BASE_URL}/movie/${id}?api_key=${API_KEY}&append_to_response=credits,recommendations,keywords`;
             const res = await fetch(creditsUrl);
             const data = await res.json();
             
@@ -78,8 +78,17 @@ export const getRealCredits = async (title: string, year: number): Promise<{dire
             const runtime = data.runtime || 0;
             const overview = data.overview || "";
             const vote_average = data.vote_average || 0;
+            const tagline = data.tagline || "";
+            
+            const keywords = data.keywords?.keywords?.map((k: any) => k.name).slice(0, 5) || [];
+            const recommendations = data.recommendations?.results?.slice(0, 4).map((r: any) => ({
+                id: r.id,
+                title: r.title,
+                year: r.release_date ? parseInt(r.release_date.split('-')[0]) : 0,
+                posterUrl: r.poster_path ? `${IMAGE_BASE_URL}${r.poster_path}` : undefined
+            })) || [];
 
-            const result = { director, cast, runtime, screenplay, music, overview, vote_average, dop };
+            const result = { director, cast, runtime, screenplay, music, overview, vote_average, dop, keywords, recommendations, tagline };
             creditsCache[cacheKey] = result;
             return result;
         }
@@ -149,15 +158,11 @@ export const searchMovies = async (query: string): Promise<Film[]> => {
             const year = releaseDate ? parseInt(releaseDate) : 0;
             const poster = m.poster_path ? `${IMAGE_BASE_URL}${m.poster_path}` : undefined;
             
-            // Create base film object using the helper
-            // We use "Unknown" for director initially as search results don't provide crew.
             const film = createFilm(m.title, year, "Unknown", poster);
             
-            // Enrich with details available in search result
             film.plot = m.overview;
             film.imdbScore = m.vote_average;
             
-            // Append TMDB ID to internal slug to ensure uniqueness in search lists
             film.id = `${film.id}-${m.id}`;
             
             return film;
