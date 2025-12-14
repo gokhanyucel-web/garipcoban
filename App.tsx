@@ -647,12 +647,18 @@ function App() {
                 console.error("❌ Error saving custom list:", error);
                 alert("Save failed: " + error.message);
             } else {
-                // ✅ CRITICAL FIX: Ensure Vault Link Exists for Persistence
-                await supabase.from('vault').upsert(
+                // ✅ CRITICAL FIX: Explicitly enforce Vault Link to solve the disappearance issue
+                console.log("🔗 Linking to Vault...", { user_id: session.user.id, list_id: listToSave.id });
+                const { error: vaultError } = await supabase.from('vault').upsert(
                     { user_id: session.user.id, list_id: listToSave.id },
                     { onConflict: 'user_id, list_id' }
                 );
-                console.log("✅ Saved successfully to custom_lists and vault");
+                
+                if (vaultError) {
+                    console.error("❌ Vault Link Failed:", vaultError);
+                } else {
+                    console.log("✅ Saved successfully to custom_lists and vault");
+                }
             }
         }
     }
@@ -748,6 +754,12 @@ function App() {
              updated_at: new Date().toISOString() // Embed timestamp here
         };
         await supabase.from('custom_lists').update({ content: contentPayload }).eq('id', updatedList.id);
+        
+        // Ensure Vault Link on Publish Toggle as well
+        await supabase.from('vault').upsert(
+            { user_id: session.user.id, list_id: updatedList.id },
+            { onConflict: 'user_id, list_id' }
+        );
     }
   };
 
@@ -898,23 +910,36 @@ function App() {
   const sherpaIdentity = calculateSherpaIdentity();
 
   const getVaultLists = () => {
-    const myLists = [...ARCHIVE_CATEGORIES.flatMap(c => c.lists).map(l => masterOverrides[l.id] || l), ...customLists].filter(list => vaultIds.includes(list.id));
+    // 1. Filter ALL lists that are in Vault (Archive or Custom)
+    const vaultListObjects = [...ARCHIVE_CATEGORIES.flatMap(c => c.lists).map(l => masterOverrides[l.id] || l), ...customLists].filter(list => vaultIds.includes(list.id));
+    
+    // 2. ALSO include any custom list created by the current user, even if not in vault (Drafts etc.)
+    //    This fixes the issue where new lists disappear if the vault link fails.
+    const myOwnLists = customLists.filter(l => true); // customLists is already filtered by userId in fetchUserData
+    
+    // Merge and Deduplicate
+    const allMyLists = Array.from(new Set([...vaultListObjects, ...myOwnLists]));
+
     const active: CuratedList[] = [];
     const drafts: CuratedList[] = [];
     const published: CuratedList[] = [];
     const completed: CuratedList[] = [];
     
-    myLists.forEach(list => {
+    allMyLists.forEach(list => {
       const prog = getListProgress(list);
+      
+      // Archive Lists Completed
       if (prog >= 100 && !list.isCustom) {
           completed.push(list);
-      } else {
-          if (list.isCustom) {
-              if (list.status === 'published') published.push(list);
-              else drafts.push(list);
-          } else {
-              active.push(list);
-          }
+      } 
+      // Custom Lists (Draft vs Published)
+      else if (list.isCustom) {
+          if (list.status === 'published') published.push(list);
+          else drafts.push(list);
+      } 
+      // Archive Lists Active
+      else {
+          active.push(list);
       }
     });
     return { active, drafts, published, completed };
