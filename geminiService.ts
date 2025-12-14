@@ -95,7 +95,6 @@ export const getFilmAnalysis = async (title: string, director: string, year: num
       }`,
       config: {
         responseMimeType: "application/json",
-        // Removing strict responseSchema to avoid potential API 400 errors with certain keys/models
       }
     });
 

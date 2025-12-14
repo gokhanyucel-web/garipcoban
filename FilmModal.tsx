@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Film, UserFilmLog } from '../types';
 import { getFilmAnalysis } from '../services/geminiService';
-import { getRealCredits, getRealPoster } from '../services/tmdb'; // TMDB'den veri çek
+import { getRealCredits, getRealPoster } from '../services/tmdb';
 import { getListsContainingFilm } from '../constants';
 
 interface FilmModalProps {
@@ -29,23 +29,20 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   const [realPoster, setRealPoster] = useState<string | null>(null);
 
   const fetchAnalysis = (currentFilm: Film) => {
-      console.log("VIRGIL: Fetching analysis for", currentFilm.title);
       setLoading(true);
       setAiError(false);
       setAiData(null);
       
       getFilmAnalysis(currentFilm.title, currentFilm.director, currentFilm.year)
         .then(data => { 
-            console.log("VIRGIL: Analysis received", data);
-            if (data && data.analysis) {
+            if (data && (data.analysis || data.trivia)) {
                 setAiData(data); 
             } else {
-                console.warn("VIRGIL: Analysis returned null or incomplete");
                 setAiError(true);
             }
         })
         .catch((err) => {
-            console.error("VIRGIL: Analysis failed", err);
+            console.error("VIRGIL: Analysis Error", err);
             setAiError(true);
         })
         .finally(() => {
@@ -62,7 +59,6 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
     setAiError(false);
     
     if (film) {
-      
       // 1. TMDB'den kesin veri ve poster çek
       getRealCredits(film.title, film.year).then(data => setRealDetails(data));
       if (film.posterUrl && film.posterUrl.includes("placehold.co")) {
@@ -102,7 +98,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   const displayCast = realDetails?.cast || film.cast;
   const displayDop = realDetails?.dop || [];
 
-  // Right Side Data (Prioritize Real Details for facts, AI for insights)
+  // Right Side Data
   const displaySynopsis = realDetails?.overview || film.plot || "No details available.";
   const displayVoteAverage = realDetails?.vote_average ? realDetails.vote_average.toFixed(1) : (film.imdbScore ? film.imdbScore.toString() : "-");
   
@@ -235,46 +231,52 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                                     onClick={() => fetchAnalysis(film)} 
                                     className="text-xs bg-black text-[#F5C71A] px-2 py-1 uppercase font-bold hover:scale-105"
                                 >
-                                    Retry Analysis
+                                    {aiError ? "Retry" : "Analyze"}
                                 </button>
                             )}
                         </div>
                         <p className={`text-lg italic font-medium ${loading ? 'opacity-50 animate-pulse' : ''}`}>
                             {loading 
                                 ? "Consulting Archives..." 
-                                : (aiError 
-                                    ? "Analysis unavailable. Connection to The Sherpa lost." 
-                                    : (aiData?.analysis || "Analysis unavailable."))}
+                                : (aiData?.analysis || "Analysis currently unavailable. Please try again.")}
                         </p>
                     </div>
                     
-                    {/* TRIVIA BOX */}
+                    {/* TRIVIA BOX - ALWAYS VISIBLE */}
                     <div className="bg-black/5 p-4 border-2 border-black/10 border-dashed">
                         <h3 className="font-black text-xs mb-1 uppercase">★ Trivia</h3>
                         <p className={`text-sm font-mono opacity-80 ${loading ? 'animate-pulse' : ''}`}>
                           {loading 
                             ? "Retrieving classified data..." 
-                            : (aiError 
-                                ? "Trivia unavailable." 
-                                : (aiData?.trivia || "No trivia recorded."))}
+                            : (aiData?.trivia || "Trivia unavailable.")}
                         </p>
                     </div>
                 </div>
 
-                {/* AI VIBES (CURATOR RECOMMENDS) */}
-                {aiData?.vibes && aiData.vibes.length > 0 && !aiError && (
-                    <div className="pt-6 border-t-4 border-black">
-                        <h3 className="font-black text-lg mb-4 uppercase">Curator Recommends (Vibes)</h3>
-                        <div className="flex flex-col gap-2">
-                            {aiData.vibes.map((vibe, idx) => (
-                                <div key={idx} className="flex items-center gap-3 border-2 border-transparent hover:border-black p-2 transition-all cursor-default">
-                                    <div className="w-2 h-2 bg-black"></div>
-                                    <span className="font-bold uppercase text-lg">{vibe}</span>
-                                </div>
-                            ))}
+                {/* AI VIBES (CURATOR RECOMMENDS) - ALWAYS VISIBLE OR PLACEHOLDER */}
+                <div className="pt-6 border-t-4 border-black">
+                    <h3 className="font-black text-lg mb-4 uppercase">Curator Recommends (Vibes)</h3>
+                    {loading ? (
+                        <div className="flex flex-col gap-2 opacity-50 animate-pulse">
+                            <div className="h-8 bg-black/10"></div>
+                            <div className="h-8 bg-black/10"></div>
+                            <div className="h-8 bg-black/10"></div>
                         </div>
-                    </div>
-                )}
+                    ) : (
+                        <div className="flex flex-col gap-2">
+                            {(aiData?.vibes && aiData.vibes.length > 0) ? (
+                                aiData.vibes.map((vibe, idx) => (
+                                    <div key={idx} className="flex items-center gap-3 border-2 border-transparent hover:border-black p-2 transition-all cursor-default">
+                                        <div className="w-2 h-2 bg-black"></div>
+                                        <span className="font-bold uppercase text-lg">{vibe}</span>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="text-sm font-mono opacity-60">Recommendations unavailable.</p>
+                            )}
+                        </div>
+                    )}
+                </div>
 
                 {/* THEMES (KEYWORDS) */}
                 {realDetails?.keywords && realDetails.keywords.length > 0 && (
