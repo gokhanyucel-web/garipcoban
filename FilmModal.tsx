@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Film, UserFilmLog } from '../types';
 import { getFilmAnalysis } from '../services/geminiService';
 import { getRealCredits, getRealPoster } from '../services/tmdb';
-import { getListsContainingFilm, getAllFilms } from '../constants';
+import { getAllFilms } from '../constants';
 
 interface FilmModalProps {
   film: Film | null;
@@ -20,7 +20,7 @@ interface FilmModalProps {
 const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, onNavigateToList, sherpaNote, isEditing, onSaveNote, isUGC, listTitle }) => {
   const [aiData, setAiData] = useState<{ analysis: string, trivia: string, vibes: string[] } | null>(null);
   const [vibePosters, setVibePosters] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Start loading immediately
   const [noteContent, setNoteContent] = useState(sherpaNote || "");
   const [hoverRating, setHoverRating] = useState(0);
   
@@ -38,10 +38,8 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
       });
   };
 
-  // IMMEDIATE FALLBACK GENERATOR
-  const generateImmediateFallback = (currentFilm: Film) => {
+  const generateFallbackData = (currentFilm: Film) => {
       const allFilms = getAllFilms();
-      // Find films from same era or same director if possible, otherwise random high-quality ones
       const similar = allFilms
           .filter(f => f.id !== currentFilm.id)
           .map(f => {
@@ -55,7 +53,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
           .map(item => item.film.title);
 
       return {
-          analysis: currentFilm.briefing || currentFilm.plot || `A significant entry in the ${currentFilm.year} cinematic landscape, directed by ${currentFilm.director}. Recognized for its distinct visual style and narrative approach.`,
+          analysis: currentFilm.briefing || currentFilm.plot || `A significant entry in the ${currentFilm.year} cinematic landscape, directed by ${currentFilm.director}. Essential viewing for the archive.`,
           trivia: `This film is often cited as a key influence in the work of ${currentFilm.director}, representing a pivotal moment in their filmography.`,
           vibes: similar.length > 0 ? similar : ["Metropolis", "The Godfather", "Pulp Fiction"]
       };
@@ -65,16 +63,15 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
     setNoteContent(sherpaNote || "");
     setRealDetails(null);
     setRealPoster(null);
-    setLoading(false);
+    setAiData(null);
+    setVibePosters({});
     
     if (film) {
-      // 1. INSTANTLY POPULATE UI (Zero Latency)
-      const fallback = generateImmediateFallback(film);
-      setAiData(fallback);
-      fetchVibePosters(fallback.vibes); // Start fetching fallback posters immediately
+      setLoading(true); // Ensure loading is true at start of new film
 
-      // 2. TMDB Data
+      // 1. TMDB Data (Parallel, doesn't block UI structure but fills details)
       getRealCredits(film.title, film.year).then(data => setRealDetails(data));
+      
       if (film.posterUrl && film.posterUrl.includes("placehold.co")) {
           getRealPoster(film.title, film.year).then(url => setRealPoster(url));
       } else {
@@ -87,20 +84,41 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
           });
       }
 
-      // 3. TRY UPGRADE WITH AI (Background)
-      if (!film.isCustomEntry) {
-         setLoading(true);
-         getFilmAnalysis(film.title, film.director, film.year)
-            .then(aiResult => {
-                if (aiResult) {
-                    // Only update if we got a real result
-                    setAiData(aiResult);
-                    fetchVibePosters(aiResult.vibes);
-                }
-            })
-            .catch(err => console.log("AI Upgrade failed, keeping fallback"))
-            .finally(() => setLoading(false));
-      }
+      // 2. Analysis Data (Strict: Load -> Fetch -> Result/Fallback -> Display)
+      const loadAnalysis = async () => {
+          if (film.isCustomEntry) {
+             setAiData({ 
+                 analysis: film.plot || "Custom entry curated by user.", 
+                 trivia: "Added via Custom List.", 
+                 vibes: [] 
+             });
+             setLoading(false);
+             return;
+          }
+
+          try {
+              // Attempt to fetch from API
+              const aiResult = await getFilmAnalysis(film.title, film.director, film.year);
+              
+              if (aiResult) {
+                  setAiData(aiResult);
+                  fetchVibePosters(aiResult.vibes);
+              } else {
+                  // API Failed/Null -> Use Fallback
+                  throw new Error("No data");
+              }
+          } catch (e) {
+              // Fallback Logic
+              const fallback = generateFallbackData(film);
+              setAiData(fallback);
+              fetchVibePosters(fallback.vibes);
+          } finally {
+              // Reveal content only after data is ready (whether real or fallback)
+              setLoading(false);
+          }
+      };
+
+      loadAnalysis();
     }
   }, [film]);
 
@@ -247,46 +265,61 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     <div>
                         <div className="flex justify-between items-center mb-2">
                             <h3 className="font-black text-lg uppercase">Why This Film?</h3>
-                            {loading && <span className="text-xs animate-pulse opacity-60 font-mono">Updating from Archives...</span>}
                         </div>
-                        <p className={`text-lg italic font-medium`}>
-                            {aiData?.analysis}
-                        </p>
+                        {loading ? (
+                            <div className="text-lg italic font-medium font-mono animate-pulse opacity-60">
+                                Consulting the archives...
+                            </div>
+                        ) : (
+                            <p className="text-lg italic font-medium">
+                                {aiData?.analysis}
+                            </p>
+                        )}
                     </div>
                     
                     {/* TRIVIA BOX - HIGH VISIBILITY STYLE */}
-                    <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-4">
+                    <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-4 min-h-[100px]">
                         <div className="absolute -top-3 left-4 bg-black text-[#F5C71A] px-3 py-1 text-xs font-black uppercase tracking-widest border border-black transform -rotate-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)]">
                             ★ SHERPA INTEL
                         </div>
-                        <p className={`font-mono text-sm leading-relaxed text-black pt-2`}>
-                          {aiData?.trivia}
-                        </p>
+                        {loading ? (
+                            <p className="font-mono text-sm leading-relaxed text-black pt-2 animate-pulse opacity-50">
+                                Decrypting data...
+                            </p>
+                        ) : (
+                            <p className="font-mono text-sm leading-relaxed text-black pt-2">
+                                {aiData?.trivia}
+                            </p>
+                        )}
                     </div>
                 </div>
 
                 {/* AI VIBES (CURATOR RECOMMENDS) - VISUAL GRID STYLE */}
                 <div className="pt-6 border-t-4 border-black">
                     <h3 className="font-black text-lg mb-4 uppercase">Curator Recommends</h3>
-                    <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                    <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] min-h-[150px]">
                          <div className="absolute -top-3 left-4 bg-black text-[#F5C71A] px-3 py-1 text-xs font-black uppercase tracking-widest border border-black transform rotate-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)]">
                             Vibes Check
                         </div>
                         <div className="pt-2">
-                            <div className="grid grid-cols-3 gap-3">
-                                {(aiData?.vibes || []).map((vibe, idx) => (
-                                    <div key={idx} className="flex flex-col gap-1 group cursor-default">
-                                        <div className="w-full aspect-[2/3] bg-gray-200 border-2 border-black overflow-hidden relative">
-                                            {vibePosters[vibe] ? (
-                                                <img src={vibePosters[vibe]} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" />
-                                            ) : (
-                                                <div className="w-full h-full flex items-center justify-center bg-black/10 text-[9px] text-center p-1 font-mono uppercase opacity-50">Image Missing</div>
-                                            )}
+                            {loading ? (
+                                <div className="font-mono text-sm opacity-50 animate-pulse">Scanning filmography...</div>
+                            ) : (
+                                <div className="grid grid-cols-3 gap-3">
+                                    {(aiData?.vibes || []).map((vibe, idx) => (
+                                        <div key={idx} className="flex flex-col gap-1 group cursor-default">
+                                            <div className="w-full aspect-[2/3] bg-gray-200 border-2 border-black overflow-hidden relative">
+                                                {vibePosters[vibe] ? (
+                                                    <img src={vibePosters[vibe]} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" />
+                                                ) : (
+                                                    <div className="w-full h-full flex items-center justify-center bg-black/10 text-[9px] text-center p-1 font-mono uppercase opacity-50">Image Missing</div>
+                                                )}
+                                            </div>
+                                            <span className="font-bold uppercase text-[10px] leading-tight text-center text-black">{vibe}</span>
                                         </div>
-                                        <span className="font-bold uppercase text-[10px] leading-tight text-center text-black">{vibe}</span>
-                                    </div>
-                                ))}
-                            </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
