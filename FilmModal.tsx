@@ -29,23 +29,26 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   const [realPoster, setRealPoster] = useState<string | null>(null);
 
   const fetchAnalysis = (currentFilm: Film) => {
+      console.log("VIRGIL: Fetching analysis for", currentFilm.title);
       setLoading(true);
       setAiError(false);
       setAiData(null);
       
       getFilmAnalysis(currentFilm.title, currentFilm.director, currentFilm.year)
         .then(data => { 
-            if (data) {
+            console.log("VIRGIL: Analysis received", data);
+            if (data && data.analysis) {
                 setAiData(data); 
             } else {
-                console.warn("Analysis returned null");
+                console.warn("VIRGIL: Analysis returned null or incomplete");
                 setAiError(true);
             }
-            setLoading(false); 
         })
         .catch((err) => {
-            console.error("Analysis failed", err);
+            console.error("VIRGIL: Analysis failed", err);
             setAiError(true);
+        })
+        .finally(() => {
             setLoading(false);
         });
   };
@@ -227,7 +230,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     <div>
                         <div className="flex justify-between items-center mb-2">
                             <h3 className="font-black text-lg uppercase">Why This Film?</h3>
-                            {aiError && (
+                            {(aiError || (!loading && !aiData)) && (
                                 <button 
                                     onClick={() => fetchAnalysis(film)} 
                                     className="text-xs bg-black text-[#F5C71A] px-2 py-1 uppercase font-bold hover:scale-105"
@@ -239,7 +242,9 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                         <p className={`text-lg italic font-medium ${loading ? 'opacity-50 animate-pulse' : ''}`}>
                             {loading 
                                 ? "Consulting Archives..." 
-                                : (aiError ? "Analysis unavailable. Connection to The Sherpa lost." : (aiData?.analysis || "Analysis unavailable."))}
+                                : (aiError 
+                                    ? "Analysis unavailable. Connection to The Sherpa lost." 
+                                    : (aiData?.analysis || "Analysis unavailable."))}
                         </p>
                     </div>
                     

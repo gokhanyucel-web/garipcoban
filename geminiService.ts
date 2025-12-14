@@ -8,6 +8,38 @@ interface AIAnalysisResult {
   vibes: string[];
 }
 
+const cleanAndParseJSON = <T>(text: string): T | null => {
+    try {
+        // 1. Try direct parse
+        return JSON.parse(text) as T;
+    } catch (e) {
+        // 2. Try removing markdown code blocks
+        try {
+            const cleanText = text.replace(/^```json\s*/i, "").replace(/\s*```$/, "").trim();
+            return JSON.parse(cleanText) as T;
+        } catch (e2) {
+            // 3. Try finding the first '{' and last '}' (Extract JSON object)
+            try {
+                const match = text.match(/\{[\s\S]*\}/);
+                if (match) {
+                    return JSON.parse(match[0]) as T;
+                }
+            } catch (e3) {
+                 // 4. Try finding array '[' and ']'
+                 try {
+                    const matchArr = text.match(/\[[\s\S]*\]/);
+                    if (matchArr) {
+                        return JSON.parse(matchArr[0]) as T;
+                    }
+                 } catch (e4) {
+                    console.error("VIRGIL: Failed to parse Gemini response", text);
+                 }
+            }
+        }
+    }
+    return null;
+};
+
 export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion[]> => {
   try {
     const apiKey = process.env.API_KEY;
@@ -21,7 +53,7 @@ export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: `Generate a list of 5 films fitting the theme, director, or vibe of: "${query}". 
-      Return valid JSON only.`,
+      Return ONLY a valid JSON array. No markdown formatting.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -42,10 +74,7 @@ export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion
     const text = response.text;
     if (!text) return [];
     
-    // Clean potential markdown code blocks just in case
-    const cleanText = text.replace(/^```json\s*/, "").replace(/\s*```$/, "");
-    const data = JSON.parse(cleanText) as AI_Suggestion[];
-    return data;
+    return cleanAndParseJSON<AI_Suggestion[]>(text) || [];
 
   } catch (error) {
     console.error("Gemini List Gen Error:", error);
@@ -68,12 +97,14 @@ export const getFilmAnalysis = async (title: string, director: string, year: num
       model: "gemini-2.5-flash",
       contents: `Analyze the film "${title}" (${year}) directed by ${dirPrompt}.
       
-      Provide a JSON object with:
-      - analysis: A 2-sentence cultural analysis explaining its significance, directorial style, or impact on cinema history. Be intellectual but accessible. NO marketing language.
-      - trivia: One fascinating, obscure production fact or trivia about the film.
-      - vibes: An array of exactly 3 other film titles that share the exact specific mood, atmosphere, or thematic resonance. Do not include this film itself.`,
+      Return valid JSON only. Structure:
+      {
+        "analysis": "Two sophisticated sentences about cultural significance or style.",
+        "trivia": "One obscure fact.",
+        "vibes": ["Film 1", "Film 2", "Film 3"]
+      }`,
       config: {
-        systemInstruction: "You are an expert film historian and curator like Roger Ebert or Pauline Kael. You provide insightful, intellectual, and concise analysis in JSON format.",
+        systemInstruction: "You are an expert film curator. Provide output in pure JSON format without Markdown code blocks.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -93,9 +124,11 @@ export const getFilmAnalysis = async (title: string, director: string, year: num
         return null;
     }
 
-    // Clean potential markdown code blocks just in case
-    const cleanText = text.replace(/^```json\s*/, "").replace(/\s*```$/, "");
-    return JSON.parse(cleanText) as AIAnalysisResult;
+    const result = cleanAndParseJSON<AIAnalysisResult>(text);
+    if (!result) {
+        console.warn("VIRGIL: Could not parse analysis JSON.", text);
+    }
+    return result;
 
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
