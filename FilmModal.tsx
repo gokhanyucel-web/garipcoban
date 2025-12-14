@@ -15,7 +15,6 @@ interface FilmModalProps {
   onSaveNote?: (note: string) => void;
   isUGC?: boolean;
   listTitle?: string;
-  forceRender?: boolean; // New prop to force prop signature change
 }
 
 const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, onNavigateToList, sherpaNote, isEditing, onSaveNote, isUGC, listTitle }) => {
@@ -124,13 +123,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      
-      {/* THICKER BORDER (border-8) TO PROVE UPDATE */}
-      <div className="relative w-full max-w-5xl bg-[#F5C71A] border-8 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] p-6 md:p-8 max-h-[90vh] overflow-y-auto text-black">
-        
-        {/* DEBUG BADGE */}
-        <div className="absolute top-0 left-0 bg-red-600 text-white text-[10px] font-bold px-2 py-1 z-50">V2.0 LIVE</div>
-
+      <div className="relative w-full max-w-5xl bg-[#F5C71A] border-4 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] p-6 md:p-8 max-h-[90vh] overflow-y-auto text-black">
         <button onClick={onClose} className="absolute top-4 right-4 z-20 text-black hover:bg-black hover:text-[#F5C71A] w-8 h-8 border-2 border-black flex items-center justify-center font-bold transition-colors">X</button>
         <div className="flex flex-col md:flex-row gap-8">
           
@@ -249,8 +242,8 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                         </p>
                     </div>
                     
-                    {/* TRIVIA BOX - UNCONDITIONAL RENDER */}
-                    <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-4 block">
+                    {/* TRIVIA BOX - HIGH VISIBILITY STYLE - RENAMED TO INTEL */}
+                    <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-4">
                         <div className="absolute -top-3 left-4 bg-black text-[#F5C71A] px-3 py-1 text-xs font-black uppercase tracking-widest border border-black transform -rotate-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)]">
                             ★ SHERPA INTEL
                         </div>
@@ -264,8 +257,8 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     </div>
                 </div>
 
-                {/* AI VIBES (CURATOR RECOMMENDS) - UNCONDITIONAL RENDER */}
-                <div className="pt-6 border-t-4 border-black block">
+                {/* AI VIBES (CURATOR RECOMMENDS) - HIGH VISIBILITY STYLE */}
+                <div className="pt-6 border-t-4 border-black">
                     <h3 className="font-black text-lg mb-4 uppercase">Curator Recommends</h3>
                     <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                          <div className="absolute -top-3 left-4 bg-black text-[#F5C71A] px-3 py-1 text-xs font-black uppercase tracking-widest border border-black transform rotate-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)]">
