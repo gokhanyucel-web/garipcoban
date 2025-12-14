@@ -560,19 +560,23 @@ function App() {
         }
         return;
     }
+    
+    // DEEP COPY to prevent mutation of original constants
+    const deepCopy = JSON.parse(JSON.stringify(selectedList));
     const newId = `custom_${Date.now()}`;
     const forkedList: CuratedList = {
-      ...selectedList,
+      ...deepCopy,
       id: newId,
-      title: `${selectedList.title} (Remix)`,
+      title: `${deepCopy.title} (Remix)`,
       subtitle: "My Custom Journey",
       author: profile.name, 
       privacy: 'public', 
-      originalListId: selectedList.id,
+      originalListId: deepCopy.id,
       isCustom: true,
       sherpaNotes: {},
       status: 'draft'
     };
+    
     setCustomLists(prev => [...prev, forkedList]);
     setVaultIds(prev => [...prev, newId]); 
     setSelectedList(forkedList);
@@ -583,6 +587,7 @@ function App() {
   const handleEditMaster = () => {
       // NEW FUNCTION: Only for Admins to explicitly edit the master source
       if (!selectedList || !isAdmin) return;
+      // Deep copy here too, just in case
       setEditingList(JSON.parse(JSON.stringify(selectedList)));
       setIsEditorMode(true);
   };
@@ -590,7 +595,8 @@ function App() {
   const handleSaveList = async () => {
     if (!editingList) return;
     
-    let listToSave = { ...editingList };
+    // Deep copy to break reference from editing state
+    let listToSave = JSON.parse(JSON.stringify(editingList));
 
     // Master list override (admin only)
     if (!listToSave.id.startsWith('custom_')) {
@@ -770,10 +776,12 @@ function App() {
 
   const handleAddTier = (isSeries: boolean) => {
     if (!editingList) return;
-    const tiers = isSeries ? (editingList.seriesTiers || []) : editingList.tiers;
+    // Clone editingList to avoid mutating shallow copies if they exist elsewhere
+    const updatedList = JSON.parse(JSON.stringify(editingList));
+    const tiers = isSeries ? (updatedList.seriesTiers || []) : updatedList.tiers;
     if (tiers.length >= 30) return;
     const newTier: Tier = { level: tiers.length + 1, name: `TIER ${tiers.length + 1}`, films: [] };
-    const updatedList = { ...editingList };
+    
     if (isSeries) updatedList.seriesTiers = [...(updatedList.seriesTiers || []), newTier];
     else updatedList.tiers = [...updatedList.tiers, newTier];
     setEditingList(updatedList);
@@ -781,28 +789,32 @@ function App() {
 
   const handleRemoveTier = (tierIndex: number, isSeries: boolean) => {
     if (!editingList) return;
-    const updatedList = { ...editingList };
-    if (isSeries && updatedList.seriesTiers) updatedList.seriesTiers = updatedList.seriesTiers.filter((_, i) => i !== tierIndex);
-    else updatedList.tiers = updatedList.tiers.filter((_, i) => i !== tierIndex);
+    const updatedList = JSON.parse(JSON.stringify(editingList));
+    if (isSeries && updatedList.seriesTiers) updatedList.seriesTiers = updatedList.seriesTiers.filter((_: any, i: number) => i !== tierIndex);
+    else updatedList.tiers = updatedList.tiers.filter((_: any, i: number) => i !== tierIndex);
     setEditingList(updatedList);
   };
 
   const handleRemoveFilmFromTier = (filmId: string, tierIndex: number, isSeries: boolean) => {
     if (!editingList) return;
-    const updatedList = { ...editingList };
+    const updatedList = JSON.parse(JSON.stringify(editingList));
     const targetTiers = isSeries ? updatedList.seriesTiers : updatedList.tiers;
-    if (targetTiers) targetTiers[tierIndex].films = targetTiers[tierIndex].films.filter(f => f.id !== filmId);
+    if (targetTiers) targetTiers[tierIndex].films = targetTiers[tierIndex].films.filter((f: any) => f.id !== filmId);
     setEditingList(updatedList);
   };
 
   const handleAddFilmToTier = (film: Film) => {
     if (!editingList || !showTierSearchModal) return;
     const { tierIndex, isSeries } = showTierSearchModal;
-    const updatedList = { ...editingList };
+    const updatedList = JSON.parse(JSON.stringify(editingList));
     const targetTiers = isSeries ? (updatedList.seriesTiers || []) : updatedList.tiers;
+    
     if (targetTiers[tierIndex].films.length >= 6) { alert("Maximum 6 films allowed per tier."); return; }
-    const allExistingFilms = [...updatedList.tiers.flatMap(t => t.films), ...(updatedList.seriesTiers?.flatMap(t => t.films) || [])];
-    if (allExistingFilms.some(f => f.id === film.id)) { alert("This film is already in your list."); return; }
+    
+    // Check Existence
+    const allExistingFilms = [...updatedList.tiers.flatMap((t: any) => t.films), ...(updatedList.seriesTiers?.flatMap((t: any) => t.films) || [])];
+    if (allExistingFilms.some((f: any) => f.id === film.id)) { alert("This film is already in your list."); return; }
+    
     targetTiers[tierIndex].films.push(film);
     setEditingList(updatedList);
     setShowTierSearchModal(null);
@@ -812,7 +824,7 @@ function App() {
 
   const handleSaveSherpaNote = (note: string) => {
     if (!editingList || !isEditContextMode) return;
-    const updatedList = { ...editingList };
+    const updatedList = JSON.parse(JSON.stringify(editingList));
     updatedList.sherpaNotes = { ...(updatedList.sherpaNotes || {}), [isEditContextMode]: note };
     setEditingList(updatedList);
     setIsEditContextMode(null);
@@ -836,24 +848,27 @@ function App() {
   const handleDrop = (e: React.DragEvent, targetTierIndex: number) => {
       e.preventDefault();
       if (!editingList) return;
+      
       const filmId = e.dataTransfer.getData("filmId");
       const sourceTierIndex = parseInt(e.dataTransfer.getData("sourceTier"));
       const filmData = JSON.parse(e.dataTransfer.getData("filmData")) as Film;
-      const allExistingFilms = [...editingList.tiers.flatMap(t => t.films), ...(editingList.seriesTiers?.flatMap(t => t.films) || [])];
-      if (editingList.tiers[targetTierIndex].films.length >= 6 && sourceTierIndex !== targetTierIndex) { alert("Maximum 6 films allowed per tier."); return; }
-      if (isNaN(sourceTierIndex) && allExistingFilms.some(f => f.id === filmData.id)) { alert("Film already in list."); return; }
+      
+      const updatedList = JSON.parse(JSON.stringify(editingList));
+      const allExistingFilms = [...updatedList.tiers.flatMap((t: any) => t.films), ...(updatedList.seriesTiers?.flatMap((t: any) => t.films) || [])];
+      
+      if (updatedList.tiers[targetTierIndex].films.length >= 6 && sourceTierIndex !== targetTierIndex) { alert("Maximum 6 films allowed per tier."); return; }
+      
+      if (isNaN(sourceTierIndex) && allExistingFilms.some((f: any) => f.id === filmData.id)) { alert("Film already in list."); return; }
+      
       if (isNaN(sourceTierIndex)) {
-          const updatedList = { ...editingList };
+          // Drag from search result or external source? Currently only internal drag supported in UI logic shown, but safely handled.
           updatedList.tiers[targetTierIndex].films.push(filmData);
-          setEditingList(updatedList);
-          setAiSuggestions(prev => prev.filter(f => f.title !== filmData.title));
       } else {
           if (sourceTierIndex === targetTierIndex) return;
-          const updatedList = { ...editingList };
-          updatedList.tiers[sourceTierIndex].films = updatedList.tiers[sourceTierIndex].films.filter(f => f.id !== filmId);
+          updatedList.tiers[sourceTierIndex].films = updatedList.tiers[sourceTierIndex].films.filter((f: any) => f.id !== filmId);
           updatedList.tiers[targetTierIndex].films.push(filmData);
-          setEditingList(updatedList);
       }
+      setEditingList(updatedList);
   };
 
   // --- CALCULATIONS ---
