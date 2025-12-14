@@ -548,11 +548,9 @@ function App() {
 
   const handleForkList = () => {
     if (!selectedList) return;
-    if (isAdmin && !selectedList.isCustom) {
-        setEditingList(JSON.parse(JSON.stringify(selectedList)));
-        setIsEditorMode(true);
-        return;
-    }
+    // CRITICAL FIX: "Remix" now ALWAYS creates a copy, regardless of Admin status.
+    // This ensures personal copies don't overwrite master lists.
+    
     const existingFork = customLists.find(l => l.originalListId === selectedList.id);
     if (existingFork) {
         if(window.confirm("You already have a remix of this journey. Would you like to open it?")) {
@@ -580,6 +578,13 @@ function App() {
     setSelectedList(forkedList);
     setEditingList(forkedList);
     setIsEditorMode(true);
+  };
+
+  const handleEditMaster = () => {
+      // NEW FUNCTION: Only for Admins to explicitly edit the master source
+      if (!selectedList || !isAdmin) return;
+      setEditingList(JSON.parse(JSON.stringify(selectedList)));
+      setIsEditorMode(true);
   };
 
   const handleSaveList = async () => {
@@ -1162,7 +1167,12 @@ function App() {
                         {currentList.isCustom ? (
                              <button onClick={() => { setEditingList(currentList); setIsEditorMode(true); }} className="bg-white border-2 border-black px-4 py-2 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-black hover:text-[#F5C71A]">EDIT LIST</button>
                         ) : (
-                             <button onClick={handleForkList} className="bg-white border-2 border-black px-4 py-2 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-black hover:text-[#F5C71A]">REMIX THIS JOURNEY</button>
+                             <>
+                                 <button onClick={handleForkList} className="bg-white border-2 border-black px-4 py-2 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-black hover:text-[#F5C71A]">REMIX THIS JOURNEY</button>
+                                 {isAdmin && (
+                                     <button onClick={handleEditMaster} className="bg-red-600 text-white border-2 border-black px-4 py-2 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-red-700">EDIT MASTER</button>
+                                 )}
+                             </>
                         )}
                         <button onClick={(e) => handleToggleVault(e, currentList.id)} className={`px-4 py-2 border-2 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${vaultIds.includes(currentList.id) ? 'bg-black text-[#F5C71A]' : 'bg-[#F5C71A] text-black'}`}>{vaultIds.includes(currentList.id) ? "✓ SAVED" : "+ ADD TO VAULT"}</button>
                      </>
