@@ -338,7 +338,8 @@ function App() {
                 return {
                     ...listContent,
                     id: item.id,
-                    status: item.status || 'draft',
+                    // FIX: Read status from content because it doesn't exist as a column
+                    status: listContent.status || item.status || 'draft',
                     author: userName, // ✅ Artık userName hazır!
                     isCustom: true,
                     tiers: listContent.tiers || [],
@@ -615,9 +616,10 @@ function App() {
                 id: listToSave.id,
                 user_id: session.user.id,
                 title: listToSave.title,
-                status: listToSave.status || 'draft',
+                // FIX: Removed 'status' from top-level to prevent schema error
+                // status: listToSave.status || 'draft', 
                 content: {
-                    // ✅ TÜM liste içeriğini content'e kaydet
+                    // ✅ TÜM liste içeriğini content'e kaydet, status DAHİL
                     title: listToSave.title,
                     subtitle: listToSave.subtitle,
                     description: listToSave.description,
@@ -626,7 +628,8 @@ function App() {
                     originalListId: listToSave.originalListId,
                     sherpaNotes: listToSave.sherpaNotes,
                     author: listToSave.author,
-                    privacy: listToSave.privacy
+                    privacy: listToSave.privacy,
+                    status: listToSave.status || 'draft'
                 },
                 updated_at: new Date().toISOString()
             };
@@ -716,14 +719,31 @@ function App() {
 
   const handleTogglePublish = async () => {
     if (!editingList) return;
+    // Fix: Explicitly type newStatus to satisfy CuratedList interface
     const newStatus: 'draft' | 'published' = editingList.status === 'published' ? 'draft' : 'published';
     const updatedList: CuratedList = { ...editingList, status: newStatus };
     
+    // Immediate Local Update for editing state
     setEditingList(updatedList);
+    
+    // CRITICAL: Immutable update to the main list state so tabs update immediately
     setCustomLists(prev => prev.map(l => l.id === updatedList.id ? updatedList : l));
 
+    // Supabase Update - FIX: Update content, NOT missing 'status' column
     if (session) {
-        await supabase.from('custom_lists').update({ status: newStatus }).eq('id', updatedList.id);
+        const contentPayload = {
+             title: updatedList.title,
+             subtitle: updatedList.subtitle,
+             description: updatedList.description,
+             tiers: updatedList.tiers,
+             seriesTiers: updatedList.seriesTiers,
+             originalListId: updatedList.originalListId,
+             sherpaNotes: updatedList.sherpaNotes,
+             author: updatedList.author,
+             privacy: updatedList.privacy,
+             status: newStatus // Embed status here
+        };
+        await supabase.from('custom_lists').update({ content: contentPayload }).eq('id', updatedList.id);
     }
   };
 
