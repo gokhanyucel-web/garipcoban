@@ -249,12 +249,16 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     </div>
                     
                     {/* TRIVIA BOX */}
-                    {(aiData?.trivia || loading) && !aiError && (
-                        <div className="bg-black/5 p-4 border-2 border-black/10 border-dashed">
-                            <h3 className="font-black text-xs mb-1 uppercase">★ Trivia</h3>
-                            <p className={`text-sm font-mono opacity-80 ${loading ? 'animate-pulse' : ''}`}>{loading ? "Retrieving classified data..." : aiData?.trivia}</p>
-                        </div>
-                    )}
+                    <div className="bg-black/5 p-4 border-2 border-black/10 border-dashed">
+                        <h3 className="font-black text-xs mb-1 uppercase">★ Trivia</h3>
+                        <p className={`text-sm font-mono opacity-80 ${loading ? 'animate-pulse' : ''}`}>
+                          {loading 
+                            ? "Retrieving classified data..." 
+                            : (aiError 
+                                ? "Trivia unavailable." 
+                                : (aiData?.trivia || "No trivia recorded."))}
+                        </p>
+                    </div>
                 </div>
 
                 {/* AI VIBES (CURATOR RECOMMENDS) */}

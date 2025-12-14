@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { AI_Suggestion } from '../types';
 
 // Interface for the curator analysis result
@@ -50,24 +50,14 @@ export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion
 
     const ai = new GoogleGenAI({ apiKey });
     
+    // Using a simpler prompt structure for maximum compatibility
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: `Generate a list of 5 films fitting the theme, director, or vibe of: "${query}". 
-      Return ONLY a valid JSON array. No markdown formatting.`,
+      Return ONLY a valid JSON array of objects.
+      Format: [{"title": "Film Title", "year": 1999, "director": "Director Name"}, ...]`,
       config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-            type: Type.ARRAY,
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    title: { type: Type.STRING },
-                    year: { type: Type.NUMBER },
-                    director: { type: Type.STRING }
-                },
-                required: ["title", "year", "director"]
-            }
-        }
+        responseMimeType: "application/json"
       }
     });
 
@@ -97,24 +87,15 @@ export const getFilmAnalysis = async (title: string, director: string, year: num
       model: "gemini-2.5-flash",
       contents: `Analyze the film "${title}" (${year}) directed by ${dirPrompt}.
       
-      Return valid JSON only. Structure:
+      Return a single valid JSON object (no markdown) with these exact keys:
       {
-        "analysis": "Two sophisticated sentences about cultural significance or style.",
-        "trivia": "One obscure fact.",
-        "vibes": ["Film 1", "Film 2", "Film 3"]
+        "analysis": "A sophisticated 2-sentence cultural analysis.",
+        "trivia": "One fascinating obscure fact.",
+        "vibes": ["Film Title 1", "Film Title 2", "Film Title 3"]
       }`,
       config: {
-        systemInstruction: "You are an expert film curator. Provide output in pure JSON format without Markdown code blocks.",
         responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            analysis: { type: Type.STRING },
-            trivia: { type: Type.STRING },
-            vibes: { type: Type.ARRAY, items: { type: Type.STRING } }
-          },
-          required: ["analysis", "trivia", "vibes"],
-        }
+        // Removing strict responseSchema to avoid potential API 400 errors with certain keys/models
       }
     });
 
