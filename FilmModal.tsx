@@ -18,19 +18,17 @@ interface FilmModalProps {
 }
 
 const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, onNavigateToList, sherpaNote, isEditing, onSaveNote, isUGC, listTitle }) => {
-  // Always start with empty structure
-  const [aiData, setAiData] = useState<{ analysis: string, trivia: string, vibes: string[] }>({
-      analysis: "",
-      trivia: "",
-      vibes: []
-  });
+  // AI Data State
+  const [aiData, setAiData] = useState<{ analysis: string, trivia: string, vibes: string[] } | null>(null);
+  
+  // Visuals State
   const [vibePosters, setVibePosters] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [noteContent, setNoteContent] = useState(sherpaNote || "");
   const [hoverRating, setHoverRating] = useState(0);
   
   // Real Data State (TMDB)
-  const [realDetails, setRealDetails] = useState<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[], keywords: string[]} | null>(null);
+  const [realDetails, setRealDetails] = useState<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[], keywords: string[], recommendations: any[]} | null>(null);
   const [realPoster, setRealPoster] = useState<string | null>(null);
 
   const fetchVibePosters = (titles: string[]) => {
@@ -43,48 +41,6 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
       });
   };
 
-  // SMART FALLBACK GENERATOR: Creates convincing text if AI fails
-  const generateSmartFallback = (currentFilm: Film) => {
-      const allFilms = getAllFilms();
-      
-      // Intelligent filtering for vibes
-      const similar = allFilms
-          .filter(f => f.id !== currentFilm.id)
-          .map(f => {
-              let score = Math.random();
-              if (f.director === currentFilm.director) score += 0.8; // Same director is high relevance
-              if (Math.abs(f.year - currentFilm.year) < 5) score += 0.3; // Same era
-              return { film: f, score };
-          })
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 3)
-          .map(item => item.film.title);
-
-      // Ensure we have at least 3 items, fallback to classics if needed
-      const finalVibes = similar.length >= 3 ? similar : [...similar, "Metropolis", "The Godfather", "Pulp Fiction"].slice(0, 3);
-
-      const analysisTemplates = [
-          `${currentFilm.title} stands as a testament to ${currentFilm.director}'s distinct visual language. A critical piece of the ${currentFilm.year} archive that demands attention.`,
-          `Released in ${currentFilm.year}, this film deconstructs the genre with ${currentFilm.director}'s signature precision. Essential viewing for the completionist.`,
-          `A masterclass in tension and form. ${currentFilm.title} operates on a frequency that few films from ${currentFilm.year} achieved.`
-      ];
-      
-      const triviaTemplates = [
-          `This film is often cited as a key influence in the later works of ${currentFilm.director}, specifically regarding its use of pacing.`,
-          `Production during ${currentFilm.year} was notoriously difficult, adding a layer of raw intensity to the final cut.`,
-          `Scholars argue that the ending of ${currentFilm.title} recontextualizes the entire narrative arc.`
-      ];
-
-      // Use hash of title to pick a consistent template (so it doesn't change on refresh)
-      const seed = currentFilm.title.length + currentFilm.year;
-      
-      return {
-          analysis: currentFilm.briefing || currentFilm.plot || analysisTemplates[seed % analysisTemplates.length],
-          trivia: triviaTemplates[seed % triviaTemplates.length],
-          vibes: finalVibes
-      };
-  };
-
   useEffect(() => {
     if (!film) return;
 
@@ -94,61 +50,87 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
     setRealDetails(null);
     setRealPoster(null);
     setVibePosters({});
-    setAiData({ analysis: "", trivia: "", vibes: [] });
+    setAiData(null);
 
-    // 1. FETCH TMDB DATA (Non-blocking)
-    getRealCredits(film.title, film.year).then(data => setRealDetails(data));
-    
-    if (film.posterUrl && film.posterUrl.includes("placehold.co")) {
-        getRealPoster(film.title, film.year).then(url => setRealPoster(url));
-    } else {
-        setRealPoster(film.posterUrl || null);
-    }
+    // 1. FETCH TMDB DATA FIRST (We need this for the high-quality fallback if AI fails)
+    const loadRealData = async () => {
+        let details = null;
+        try {
+            details = await getRealCredits(film.title, film.year);
+            if (details) setRealDetails(details);
+            
+            // Poster logic
+            if (film.posterUrl && film.posterUrl.includes("placehold.co")) {
+                const url = await getRealPoster(film.title, film.year);
+                if (url) setRealPoster(url);
+            } else {
+                setRealPoster(film.posterUrl || null);
+            }
+        } catch (e) {
+            console.error("TMDB Fetch Error", e);
+        }
+        return details;
+    };
 
-    if (!film.plot || film.plot.length < 10) {
-        getRealCredits(film.title, film.year).then(data => {
-            if (data) setRealDetails(data);
-        });
-    }
-
-    // 2. FETCH AI/FALLBACK DATA (Race Condition)
-    const loadData = async () => {
-        // Minimum load time for the "nice effect" (600ms)
-        const minLoadPromise = new Promise(resolve => setTimeout(resolve, 600));
+    // 2. FETCH AI DATA (With Pulse Effect)
+    const loadAiData = async (tmdbDetails: any) => {
+        // Force minimum load time for the "Pulse" effect (UX)
+        const minLoadPromise = new Promise(resolve => setTimeout(resolve, 800));
         
-        let resultData;
+        let resultData = { analysis: "", trivia: "", vibes: [] as string[] };
+        let aiSuccess = false;
 
-        if (film.isCustomEntry) {
-             resultData = generateSmartFallback(film);
-             resultData.analysis = film.plot || resultData.analysis;
-             resultData.trivia = "Added via Custom List curation.";
-        } else {
-            try {
-                // Race: AI vs Timeout (2.5s)
+        try {
+            if (film.isCustomEntry) {
+                 // Custom entries don't query AI to save tokens/time usually, but we can if we want.
+                 // For now, simple fallback.
+                 resultData.analysis = film.plot || "User curated entry.";
+                 resultData.trivia = "Added via Custom Journey.";
+                 aiSuccess = true;
+            } else {
+                // Race Condition: 4 seconds timeout for AI
                 const apiPromise = getFilmAnalysis(film.title, film.director, film.year);
-                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 2500));
+                const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 4000));
 
                 const aiResult = await Promise.race([apiPromise, timeoutPromise]) as any;
                 
                 if (aiResult) {
                     resultData = aiResult;
-                } else {
-                    throw new Error("AI returned null");
+                    aiSuccess = true;
                 }
-            } catch (e) {
-                console.log("⚡ Using Smart Fallback due to:", e);
-                resultData = generateSmartFallback(film);
+            }
+        } catch (e) {
+            console.log("AI Unavailable, switching to high-fidelity backups.");
+        }
+
+        // Wait for the pulse effect to finish
+        await minLoadPromise;
+
+        // FALLBACK LOGIC (High Fidelity Only)
+        if (!aiSuccess) {
+            // 1. Analysis: If failed, we DO NOT make up text. 
+            // We leave it empty or use the TMDB tagline if available, or a system message.
+            resultData.analysis = "Analysis unavailable."; 
+            
+            // 2. Trivia: If failed, show nothing.
+            resultData.trivia = "";
+
+            // 3. Vibes: CRITICAL. Use TMDB Recommendations instead of AI.
+            // This ensures high-quality "More Like This" without hallucination.
+            if (tmdbDetails && tmdbDetails.recommendations && tmdbDetails.recommendations.length > 0) {
+                resultData.vibes = tmdbDetails.recommendations.map((r: any) => r.title).slice(0, 3);
+            } else {
+                 resultData.vibes = [];
             }
         }
 
-        await minLoadPromise; // Wait for skeleton effect
-
         setAiData(resultData);
-        fetchVibePosters(resultData.vibes);
+        if (resultData.vibes.length > 0) fetchVibePosters(resultData.vibes);
         setLoading(false);
     };
 
-    loadData();
+    // Execute Sequence
+    loadRealData().then((details) => loadAiData(details));
 
   }, [film]);
 
@@ -166,7 +148,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   const displayImage = realPoster || film.posterUrl;
   const displayCast = realDetails?.cast || film.cast;
   const displayDop = realDetails?.dop || [];
-  const displaySynopsis = realDetails?.overview || film.plot || "No synopsis available.";
+  const displaySynopsis = realDetails?.overview || film.plot || "No details available.";
   const displayVoteAverage = realDetails?.vote_average ? realDetails.vote_average.toFixed(1) : (film.imdbScore ? film.imdbScore.toString() : "-");
   
   const RatingBar = () => (
@@ -187,12 +169,24 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
     </div>
   );
 
-  // Skeleton Components for Loading State
-  const TextSkeleton = () => (
-      <div className="animate-pulse space-y-2 opacity-50">
-          <div className="h-3 bg-black/20 rounded w-full"></div>
-          <div className="h-3 bg-black/20 rounded w-5/6"></div>
-          <div className="h-3 bg-black/20 rounded w-4/6"></div>
+  // High-End Skeleton Loader
+  const SkeletonLine = ({ width }: { width: string }) => (
+      <div className={`h-3 bg-black/10 rounded ${width} animate-pulse mb-2`}></div>
+  );
+
+  const BoxSkeleton = () => (
+      <div className="w-full h-full flex flex-col gap-2 p-1">
+          <SkeletonLine width="w-full" />
+          <SkeletonLine width="w-11/12" />
+          <SkeletonLine width="w-4/5" />
+      </div>
+  );
+
+  const VibeSkeleton = () => (
+      <div className="grid grid-cols-3 gap-3">
+           <div className="aspect-[2/3] bg-black/10 animate-pulse border border-black/5"></div>
+           <div className="aspect-[2/3] bg-black/10 animate-pulse border border-black/5"></div>
+           <div className="aspect-[2/3] bg-black/10 animate-pulse border border-black/5"></div>
       </div>
   );
 
@@ -267,20 +261,27 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                         <div className="flex justify-between items-center mb-2">
                             <h3 className="font-black text-lg uppercase">Why This Film?</h3>
                         </div>
-                        {loading ? <TextSkeleton /> : <p className="text-lg italic font-medium">{aiData.analysis}</p>}
+                        {loading ? <BoxSkeleton /> : <p className="text-lg italic font-medium">{aiData?.analysis}</p>}
                     </div>
                     
-                    {/* TRIVIA BOX - ALWAYS RENDER CONTAINER */}
-                    <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-4 min-h-[100px]">
-                        <div className="absolute -top-3 left-4 bg-black text-[#F5C71A] px-3 py-1 text-xs font-black uppercase tracking-widest border border-black transform -rotate-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)]">
-                            ★ SHERPA INTEL
+                    {/* TRIVIA BOX - CONDITIONALLY RENDER OR SKELETON */}
+                    {loading ? (
+                        <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-4 min-h-[100px]">
+                             <div className="absolute -top-3 left-4 bg-black text-[#F5C71A] px-3 py-1 text-xs font-black uppercase tracking-widest border border-black transform -rotate-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)]">
+                                ★ SHERPA INTEL
+                            </div>
+                            <div className="pt-2"><BoxSkeleton /></div>
                         </div>
-                        {loading ? (
-                            <div className="pt-2"><TextSkeleton /></div>
-                        ) : (
-                            <p className="font-mono text-sm leading-relaxed text-black pt-2">{aiData.trivia}</p>
-                        )}
-                    </div>
+                    ) : (
+                        aiData?.trivia && (
+                            <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-4 min-h-[100px]">
+                                <div className="absolute -top-3 left-4 bg-black text-[#F5C71A] px-3 py-1 text-xs font-black uppercase tracking-widest border border-black transform -rotate-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)]">
+                                    ★ SHERPA INTEL
+                                </div>
+                                <p className="font-mono text-sm leading-relaxed text-black pt-2">{aiData.trivia}</p>
+                            </div>
+                        )
+                    )}
                 </div>
 
                 {/* AI VIBES - ALWAYS RENDER CONTAINER */}
@@ -292,14 +293,10 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                         </div>
                         <div className="pt-2">
                             {loading ? (
-                                <div className="grid grid-cols-3 gap-3 animate-pulse">
-                                    <div className="aspect-[2/3] bg-black/10"></div>
-                                    <div className="aspect-[2/3] bg-black/10"></div>
-                                    <div className="aspect-[2/3] bg-black/10"></div>
-                                </div>
+                                <VibeSkeleton />
                             ) : (
                                 <div className="grid grid-cols-3 gap-3">
-                                    {aiData.vibes.map((vibe, idx) => (
+                                    {aiData?.vibes && aiData.vibes.length > 0 ? aiData.vibes.map((vibe, idx) => (
                                         <div key={idx} className="flex flex-col gap-1 group cursor-default">
                                             <div className="w-full aspect-[2/3] bg-gray-200 border-2 border-black overflow-hidden relative">
                                                 {vibePosters[vibe] ? (
@@ -310,8 +307,11 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                                             </div>
                                             <span className="font-bold uppercase text-[10px] leading-tight text-center text-black">{vibe}</span>
                                         </div>
-                                    ))}
-                                    {aiData.vibes.length === 0 && <div className="col-span-3 text-center text-xs font-mono opacity-50">No recommendations available.</div>}
+                                    )) : (
+                                        <div className="col-span-3 text-center text-xs font-mono opacity-50 py-4">
+                                            No archival recommendations found.
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
