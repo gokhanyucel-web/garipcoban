@@ -242,17 +242,17 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                         </p>
                     </div>
                     
-                    {/* TRIVIA BOX - HIGH VISIBILITY STYLE */}
-                    <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-2">
+                    {/* TRIVIA BOX - HIGH VISIBILITY STYLE - RENAMED TO INTEL */}
+                    <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-4">
                         <div className="absolute -top-3 left-4 bg-black text-[#F5C71A] px-3 py-1 text-xs font-black uppercase tracking-widest border border-black transform -rotate-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)]">
-                            ★ Sherpa Trivia
+                            ★ SHERPA INTEL
                         </div>
                         <p className={`font-mono text-sm leading-relaxed text-black pt-2 ${loading ? 'animate-pulse opacity-50' : ''}`}>
                           {loading 
                             ? "Retrieving classified data..." 
                             : (aiError 
-                                ? "Trivia unavailable. (Offline)" 
-                                : (aiData?.trivia || "No trivia recorded for this entry."))}
+                                ? "Intel unavailable. (Offline)" 
+                                : (aiData?.trivia || "No intelligence recorded for this entry."))}
                         </p>
                     </div>
                 </div>
