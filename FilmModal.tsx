@@ -20,6 +20,7 @@ interface FilmModalProps {
 const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, onNavigateToList, sherpaNote, isEditing, onSaveNote, isUGC, listTitle }) => {
   const [aiData, setAiData] = useState<{ analysis: string, trivia: string, vibes: string[] } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [aiError, setAiError] = useState(false);
   const [noteContent, setNoteContent] = useState(sherpaNote || "");
   const [hoverRating, setHoverRating] = useState(0);
   
@@ -27,12 +28,33 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   const [realDetails, setRealDetails] = useState<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[], keywords: string[]} | null>(null);
   const [realPoster, setRealPoster] = useState<string | null>(null);
 
+  const fetchAnalysis = (currentFilm: Film) => {
+      setLoading(true);
+      setAiError(false);
+      setAiData(null);
+      
+      getFilmAnalysis(currentFilm.title, currentFilm.director, currentFilm.year)
+        .then(data => { 
+            if (data) {
+                setAiData(data); 
+            } else {
+                setAiError(true);
+            }
+            setLoading(false); 
+        })
+        .catch(() => {
+            setAiError(true);
+            setLoading(false);
+        });
+  };
+
   useEffect(() => {
     setNoteContent(sherpaNote || "");
     setRealDetails(null);
     setRealPoster(null);
     setAiData(null);
     setLoading(false);
+    setAiError(false);
     
     if (film) {
       
@@ -55,15 +77,10 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
       if (film.isCustomEntry) {
          setAiData({ analysis: film.plot || "Custom entry curated by user.", trivia: "Added via Custom List.", vibes: [] });
       } else {
-        setLoading(true);
-        // Call AI with full context including List Title
-        getFilmAnalysis(film.title, film.director, film.year, listTitle).then(data => { 
-            setAiData(data); 
-            setLoading(false); 
-        });
+        fetchAnalysis(film);
       }
     }
-  }, [film, listTitle]);
+  }, [film]);
 
   if (!film) return null;
 
@@ -136,6 +153,17 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                 </div>
             </div>
 
+            {film.streamingServices && film.streamingServices.length > 0 && (
+                <div className="w-full">
+                    <div className="text-[10px] font-bold uppercase opacity-60 mb-1">Where to watch:</div>
+                    <div className="flex flex-wrap gap-1">
+                        {film.streamingServices.map(s => (
+                            <span key={s} className="px-2 py-1 bg-black text-[#F5C71A] text-[9px] font-bold uppercase border border-white/20">{s}</span>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* CREDITS BOX */}
             <div className="w-full text-black border-2 border-black bg-white/20 p-3 text-sm space-y-2">
                <div className="grid grid-cols-[80px_1fr] gap-2 border-b border-black/20 pb-2">
@@ -195,14 +223,26 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                 {/* AI ANALYSIS & TRIVIA */}
                 <div className="flex flex-col gap-4">
                     <div>
-                        <h3 className="font-black text-lg mb-2 uppercase">Why This Film?</h3>
+                        <div className="flex justify-between items-center mb-2">
+                            <h3 className="font-black text-lg uppercase">Why This Film?</h3>
+                            {aiError && (
+                                <button 
+                                    onClick={() => fetchAnalysis(film)} 
+                                    className="text-xs bg-black text-[#F5C71A] px-2 py-1 uppercase font-bold hover:scale-105"
+                                >
+                                    Retry Analysis
+                                </button>
+                            )}
+                        </div>
                         <p className={`text-lg italic font-medium ${loading ? 'opacity-50 animate-pulse' : ''}`}>
-                            {loading ? "Consulting Archives..." : (aiData?.analysis || "Analysis unavailable.")}
+                            {loading 
+                                ? "Consulting Archives..." 
+                                : (aiError ? "Analysis unavailable. Connection to The Sherpa lost." : (aiData?.analysis || "Analysis unavailable."))}
                         </p>
                     </div>
                     
                     {/* TRIVIA BOX */}
-                    {(aiData?.trivia || loading) && (
+                    {(aiData?.trivia || loading) && !aiError && (
                         <div className="bg-black/5 p-4 border-2 border-black/10 border-dashed">
                             <h3 className="font-black text-xs mb-1 uppercase">★ Trivia</h3>
                             <p className={`text-sm font-mono opacity-80 ${loading ? 'animate-pulse' : ''}`}>{loading ? "Retrieving classified data..." : aiData?.trivia}</p>
@@ -211,7 +251,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                 </div>
 
                 {/* AI VIBES (CURATOR RECOMMENDS) */}
-                {aiData?.vibes && aiData.vibes.length > 0 && (
+                {aiData?.vibes && aiData.vibes.length > 0 && !aiError && (
                     <div className="pt-6 border-t-4 border-black">
                         <h3 className="font-black text-lg mb-4 uppercase">Curator Recommends (Vibes)</h3>
                         <div className="flex flex-col gap-2">

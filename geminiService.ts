@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { AI_Suggestion, FilmAnalysis } from '../types';
+import { AI_Suggestion } from '../types';
 
 // Interface for the curator analysis result
 interface AIAnalysisResult {
@@ -10,7 +10,7 @@ interface AIAnalysisResult {
 
 export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion[]> => {
   try {
-    const apiKey = "senin_yeni_api_keyin_buraya_gelecek"; // Burayı manuel değiştirmen gerekebilir ama Vercel env'den alacaksa process.env kalsın
+    const apiKey = process.env.API_KEY;
     if (!apiKey) {
       console.warn("API Key not found in environment variables.");
       return [];
@@ -54,17 +54,24 @@ export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion
 export const getFilmAnalysis = async (title: string, director: string, year: number): Promise<AIAnalysisResult | null> => {
   try {
     const apiKey = process.env.API_KEY;
-    if (!apiKey) return null;
+    if (!apiKey) {
+        console.warn("Gemini API Key missing.");
+        return null;
+    }
 
     const ai = new GoogleGenAI({ apiKey });
+    const dirPrompt = director === "Unknown" ? "the film's director" : director;
+
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: `Analyze the film "${title}" (${year}) directed by ${director}.
+      contents: `Analyze the film "${title}" (${year}) directed by ${dirPrompt}.
       
-      1. analysis: Write a 2-sentence cultural analysis explaining its significance, directorial style, or impact on cinema history. Be intellectual but accessible. NO marketing language.
-      2. trivia: Provide one fascinating, obscure production fact or trivia about the film.
-      3. vibes: List exactly 3 other film titles that share the exact specific mood, atmosphere, or thematic resonance. Do not include this film itself.`,
+      Provide a JSON object with:
+      - analysis: A 2-sentence cultural analysis explaining its significance, directorial style, or impact on cinema history. Be intellectual but accessible. NO marketing language.
+      - trivia: One fascinating, obscure production fact or trivia about the film.
+      - vibes: An array of exactly 3 other film titles that share the exact specific mood, atmosphere, or thematic resonance. Do not include this film itself.`,
       config: {
+        systemInstruction: "You are an expert film historian and curator like Roger Ebert or Pauline Kael. You provide insightful, intellectual, and concise analysis in JSON format.",
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -79,7 +86,10 @@ export const getFilmAnalysis = async (title: string, director: string, year: num
     });
 
     const text = response.text;
-    if (!text) return null;
+    if (!text) {
+        console.warn("Gemini returned empty text.");
+        return null;
+    }
     return JSON.parse(text) as AIAnalysisResult;
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
