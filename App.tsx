@@ -290,8 +290,27 @@ function App() {
 
   const fetchUserData = async (userId: string) => {
     try {
-        // 1. Logs
+        console.log("🔄 fetchUserData started - userId:", userId);
+        
+        // 1. ✅ ÖNCE PROFILE YÜK (EN BAŞTA!)
+        const { data: profileData, error: profileError } = await supabase.from('profiles').select('*').eq('id', userId).single();
+        
+        if (profileError) console.error("❌ Profile fetch error:", profileError);
+        
+        const userName = profileData?.username || "Initiate";
+        const userMotto = profileData?.motto || "The Unwritten";
+        const userAvatar = profileData?.avatar_url || undefined;
+
+        setProfile({
+            name: userName,
+            motto: userMotto,
+            avatar: userAvatar
+        });
+
+        // 2. Logs
         const { data: logs, error: logsError } = await supabase.from('user_logs').select('*').eq('user_id', userId);
+        if (logsError) console.error("❌ Logs fetch error:", logsError);
+        
         if (logs) {
             const db: UserDatabase = {};
             logs.forEach((log: any) => {
@@ -301,30 +320,39 @@ function App() {
             setUserDb(db);
         }
 
-        // 2. Vault
+        // 3. Vault
         const { data: vault, error: vaultError } = await supabase.from('vault').select('list_id').eq('user_id', userId);
+        if (vaultError) console.error("❌ Vault fetch error:", vaultError);
+        
         if (vault) {
             setVaultIds(vault.map((row: any) => row.list_id));
         }
 
-        // 3. Custom Lists (Robust JSONB Parsing)
+        // 4. ✅ CUSTOM LISTS - ŞİMDİ PROFILE HAZIR!
         const { data: lists, error: listsError } = await supabase.from('custom_lists').select('*').eq('user_id', userId);
+        if (listsError) console.error("❌ Custom lists fetch error:", listsError);
+        
         if (lists) {
             const mappedLists: CuratedList[] = lists.map((item: any) => {
-                // Ensure we spread content FIRST, then overwrite ID and Status to match DB
+                const listContent = item.content || {};
                 return {
-                    ...item.content,
+                    ...listContent,
                     id: item.id,
-                    status: item.status,
-                    author: profile.name, // Ensure current user name is attached
-                    isCustom: true
+                    status: item.status || 'draft',
+                    author: userName, // ✅ Artık userName hazır!
+                    isCustom: true,
+                    tiers: listContent.tiers || [],
+                    seriesTiers: listContent.seriesTiers,
+                    sherpaNotes: listContent.sherpaNotes || {}
                 };
             });
             setCustomLists(mappedLists);
         }
 
-        // 4. Master Overrides (Admin Persistence)
+        // 5. Master Overrides (Admin)
         const { data: overrides, error: overridesError } = await supabase.from('master_overrides').select('*');
+        if (overridesError) console.error("❌ Master overrides fetch error:", overridesError);
+        
         if (overrides) {
             const overridesMap: Record<string, CuratedList> = {};
             overrides.forEach((item: any) => {
@@ -333,15 +361,6 @@ function App() {
             setMasterOverrides(overridesMap);
         }
 
-        // 5. Profile
-        const { data: profileData, error: profileError } = await supabase.from('profiles').select('*').eq('id', userId).single();
-        if (profileData) {
-            setProfile({
-                name: profileData.username || "Initiate",
-                motto: profileData.motto || "The Unwritten",
-                avatar: profileData.avatar_url || undefined
-            });
-        }
     } catch (e) {
         console.error("Critical error in fetchUserData:", e);
     }
@@ -356,9 +375,6 @@ function App() {
         const { data: { session: existingSession } } = await supabase.auth.getSession();
         if (mounted) {
             setSession(existingSession);
-            // Global overrides can be fetched without auth technically if RLS allows, 
-            // but usually we fetch them with user data. 
-            // If no user, we might want to fetch overrides anyway for the home page.
             if (existingSession) {
                 await fetchUserData(existingSession.user.id);
                 const savedView = localStorage.getItem('virgil_active_view') as 'home' | 'vault';
@@ -568,29 +584,14 @@ function App() {
   const handleSaveList = async () => {
     if (!editingList) return;
     
-    // CRITICAL: Remix Logic Fix
-    // If editing a master list AND NOT ADMIN, force create new custom list
-    // OR if editing a master list AND ADMIN, but explicitly want to fork/remix
-    // We treat it as custom if it was already custom OR if we are forcing a fork
-    
     let listToSave = { ...editingList };
-    let isNewRemix = false;
 
-    // If we are editing a master list source (isCustom is false), we MUST convert it to a custom list unless we are explicitly in Admin Override mode.
-    // However, the UI logic sets isEditorMode only.
-    // Safety check: If isAdmin is false, we NEVER overwrite master.
-    // If isAdmin is true, we assume they might want to overwrite if they didn't explicitly Fork.
-    // BUT, the `handleForkList` already handles creating the copy structure.
-    // The issue is if `editingList` ID still points to a master list ID.
-    
-    // If the list ID is a known master list ID (not starting with 'custom_'), we must check permissions.
+    // Master list override (admin only)
     if (!listToSave.id.startsWith('custom_')) {
         if (!isAdmin) {
-            // Should not happen via UI, but safety first
             console.error("Unauthorized attempt to save master list");
             return;
         }
-        // Admin saving master list
         setMasterOverrides(prev => ({...prev, [listToSave.id]: listToSave}));
         if (session) {
              const payload = {
@@ -601,8 +602,13 @@ function App() {
              await supabase.from('master_overrides').upsert(payload, { onConflict: 'list_id' });
         }
     } else {
-        // Saving a Custom List (Draft/Published/Remix)
+        // ✅ Custom List Save
         setCustomLists(prev => prev.map(l => l.id === listToSave.id ? listToSave : l));
+        
+        // Optimistically update vaultIds
+        if (!vaultIds.includes(listToSave.id)) {
+            setVaultIds(prev => [...prev, listToSave.id]);
+        }
         
         if (session) {
             const payload = {
@@ -611,17 +617,37 @@ function App() {
                 title: listToSave.title,
                 status: listToSave.status || 'draft',
                 content: {
+                    // ✅ TÜM liste içeriğini content'e kaydet
+                    title: listToSave.title,
                     subtitle: listToSave.subtitle,
                     description: listToSave.description,
                     tiers: listToSave.tiers,
                     seriesTiers: listToSave.seriesTiers,
                     originalListId: listToSave.originalListId,
-                    sherpaNotes: listToSave.sherpaNotes
+                    sherpaNotes: listToSave.sherpaNotes,
+                    author: listToSave.author,
+                    privacy: listToSave.privacy
                 },
                 updated_at: new Date().toISOString()
             };
-            const { error } = await supabase.from('custom_lists').upsert(payload);
-            if (error) console.error("Error saving custom list:", error);
+            
+            console.log("💾 Saving to Supabase:", payload);
+            
+            const { data, error } = await supabase
+              .from('custom_lists')
+              .upsert(payload, { onConflict: 'id' });
+            
+            if (error) {
+                console.error("❌ Error saving custom list:", error);
+                alert("Save failed: " + error.message);
+            } else {
+                // ✅ CRITICAL FIX: Ensure Vault Link Exists for Persistence
+                await supabase.from('vault').upsert(
+                    { user_id: session.user.id, list_id: listToSave.id },
+                    { onConflict: 'user_id, list_id' }
+                );
+                console.log("✅ Saved successfully to custom_lists and vault");
+            }
         }
     }
     
@@ -690,17 +716,12 @@ function App() {
 
   const handleTogglePublish = async () => {
     if (!editingList) return;
-    // Fix: Explicitly type newStatus to satisfy CuratedList interface
     const newStatus: 'draft' | 'published' = editingList.status === 'published' ? 'draft' : 'published';
-    const updatedList = { ...editingList, status: newStatus };
+    const updatedList: CuratedList = { ...editingList, status: newStatus };
     
-    // Immediate Local Update for editing state
     setEditingList(updatedList);
-    
-    // CRITICAL: Immutable update to the main list state so tabs update immediately
     setCustomLists(prev => prev.map(l => l.id === updatedList.id ? updatedList : l));
 
-    // Supabase Update
     if (session) {
         await supabase.from('custom_lists').update({ status: newStatus }).eq('id', updatedList.id);
     }
