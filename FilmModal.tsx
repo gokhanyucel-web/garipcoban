@@ -18,13 +18,18 @@ interface FilmModalProps {
 }
 
 const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, onNavigateToList, sherpaNote, isEditing, onSaveNote, isUGC, listTitle }) => {
-  const [aiData, setAiData] = useState<{ analysis: string, trivia: string, vibes: string[] } | null>(null);
+  // Default structure to ensure boxes render immediately
+  const [aiData, setAiData] = useState<{ analysis: string, trivia: string, vibes: string[] }>({
+      analysis: "",
+      trivia: "",
+      vibes: []
+  });
   const [vibePosters, setVibePosters] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true); // Start loading immediately
+  const [loading, setLoading] = useState(true);
   const [noteContent, setNoteContent] = useState(sherpaNote || "");
   const [hoverRating, setHoverRating] = useState(0);
   
-  // Kesin veriler için state (TMDB)
+  // Real Data State
   const [realDetails, setRealDetails] = useState<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[], keywords: string[]} | null>(null);
   const [realPoster, setRealPoster] = useState<string | null>(null);
 
@@ -39,87 +44,99 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   };
 
   const generateFallbackData = (currentFilm: Film) => {
-      const allFilms = getAllFilms();
-      const similar = allFilms
-          .filter(f => f.id !== currentFilm.id)
-          .map(f => {
-              let score = Math.random();
-              if (f.director === currentFilm.director) score += 0.5;
-              if (Math.abs(f.year - currentFilm.year) < 5) score += 0.2;
-              return { film: f, score };
-          })
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 3)
-          .map(item => item.film.title);
+      try {
+          const allFilms = getAllFilms();
+          const similar = allFilms
+              .filter(f => f.id !== currentFilm.id)
+              .map(f => {
+                  let score = Math.random();
+                  if (f.director === currentFilm.director) score += 0.5;
+                  if (Math.abs(f.year - currentFilm.year) < 5) score += 0.2;
+                  return { film: f, score };
+              })
+              .sort((a, b) => b.score - a.score)
+              .slice(0, 3)
+              .map(item => item.film.title);
 
-      return {
-          analysis: currentFilm.briefing || currentFilm.plot || `A significant entry in the ${currentFilm.year} cinematic landscape, directed by ${currentFilm.director}. Essential viewing for the archive.`,
-          trivia: `This film is often cited as a key influence in the work of ${currentFilm.director}, representing a pivotal moment in their filmography.`,
-          vibes: similar.length > 0 ? similar : ["Metropolis", "The Godfather", "Pulp Fiction"]
-      };
+          return {
+              analysis: currentFilm.briefing || currentFilm.plot || `A significant entry in the ${currentFilm.year} cinematic landscape, directed by ${currentFilm.director}. Essential viewing for the archive.`,
+              trivia: `This film is often cited as a key influence in the work of ${currentFilm.director}, representing a pivotal moment in their filmography.`,
+              vibes: similar.length > 0 ? similar : ["Metropolis", "The Godfather", "Pulp Fiction"]
+          };
+      } catch (e) {
+          // Absolute last resort fallback if getAllFilms fails
+          return {
+              analysis: "A cinematic work of significance.",
+              trivia: "Released in " + currentFilm.year + ".",
+              vibes: ["Cinema Paradiso", "The Godfather", "Pulp Fiction"]
+          };
+      }
   };
 
   useEffect(() => {
+    if (!film) return;
+
+    // RESET STATE
+    setLoading(true);
     setNoteContent(sherpaNote || "");
     setRealDetails(null);
     setRealPoster(null);
-    setAiData(null);
     setVibePosters({});
+    setAiData({ analysis: "", trivia: "", vibes: [] }); // Clear data so we don't show old stuff
+
+    // 1. FETCH TMDB DATA (Non-blocking for the AI part, but useful for visuals)
+    getRealCredits(film.title, film.year).then(data => setRealDetails(data));
     
-    if (film) {
-      setLoading(true); // Ensure loading is true at start of new film
-
-      // 1. TMDB Data (Parallel, doesn't block UI structure but fills details)
-      getRealCredits(film.title, film.year).then(data => setRealDetails(data));
-      
-      if (film.posterUrl && film.posterUrl.includes("placehold.co")) {
-          getRealPoster(film.title, film.year).then(url => setRealPoster(url));
-      } else {
-          setRealPoster(film.posterUrl || null);
-      }
-
-      if (!film.plot || film.plot.length < 10) {
-          getRealCredits(film.title, film.year).then(data => {
-              if (data) setRealDetails(data);
-          });
-      }
-
-      // 2. Analysis Data (Strict: Load -> Fetch -> Result/Fallback -> Display)
-      const loadAnalysis = async () => {
-          if (film.isCustomEntry) {
-             setAiData({ 
-                 analysis: film.plot || "Custom entry curated by user.", 
-                 trivia: "Added via Custom List.", 
-                 vibes: [] 
-             });
-             setLoading(false);
-             return;
-          }
-
-          try {
-              // Attempt to fetch from API
-              const aiResult = await getFilmAnalysis(film.title, film.director, film.year);
-              
-              if (aiResult) {
-                  setAiData(aiResult);
-                  fetchVibePosters(aiResult.vibes);
-              } else {
-                  // API Failed/Null -> Use Fallback
-                  throw new Error("No data");
-              }
-          } catch (e) {
-              // Fallback Logic
-              const fallback = generateFallbackData(film);
-              setAiData(fallback);
-              fetchVibePosters(fallback.vibes);
-          } finally {
-              // Reveal content only after data is ready (whether real or fallback)
-              setLoading(false);
-          }
-      };
-
-      loadAnalysis();
+    if (film.posterUrl && film.posterUrl.includes("placehold.co")) {
+        getRealPoster(film.title, film.year).then(url => setRealPoster(url));
+    } else {
+        setRealPoster(film.posterUrl || null);
     }
+
+    if (!film.plot || film.plot.length < 10) {
+        getRealCredits(film.title, film.year).then(data => {
+            if (data) setRealDetails(data);
+        });
+    }
+
+    // 2. FETCH AI/FALLBACK DATA (The Blocking Part)
+    const fetchData = async () => {
+        // Force a minimum loading time for better UX (prevents instant flash)
+        const minLoadTime = new Promise(resolve => setTimeout(resolve, 600));
+        let resultData;
+
+        try {
+            if (film.isCustomEntry) {
+                resultData = { 
+                    analysis: film.plot || "Custom entry curated by user.", 
+                    trivia: "Added via Custom List.", 
+                    vibes: [] 
+                };
+            } else {
+                // Try API
+                const aiResult = await getFilmAnalysis(film.title, film.director, film.year);
+                if (aiResult) {
+                    resultData = aiResult;
+                } else {
+                    throw new Error("AI Failed");
+                }
+            }
+        } catch (e) {
+            // Fallback
+            resultData = generateFallbackData(film);
+        }
+
+        // Wait for minimum time
+        await minLoadTime;
+
+        // Set Data & Reveal
+        setAiData(resultData);
+        fetchVibePosters(resultData.vibes);
+        setLoading(false);
+    };
+
+    fetchData();
+
   }, [film]);
 
   if (!film) return null;
@@ -128,7 +145,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   const rating = log?.rating || 0;
   const displayRating = hoverRating > 0 ? hoverRating : rating;
   
-  // Left Side Data
+  // Display Helpers
   const displayDirector = realDetails?.director || film.director;
   const displayRuntime = realDetails?.runtime || film.runtime;
   const displayScreenplay = realDetails?.screenplay || film.screenplay;
@@ -136,8 +153,6 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   const displayImage = realPoster || film.posterUrl;
   const displayCast = realDetails?.cast || film.cast;
   const displayDop = realDetails?.dop || [];
-
-  // Right Side Data
   const displaySynopsis = realDetails?.overview || film.plot || "No details available.";
   const displayVoteAverage = realDetails?.vote_average ? realDetails.vote_average.toFixed(1) : (film.imdbScore ? film.imdbScore.toString() : "-");
   
@@ -159,6 +174,15 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
     </div>
   );
 
+  // Skeleton Components for Loading State
+  const TextSkeleton = () => (
+      <div className="animate-pulse space-y-2">
+          <div className="h-3 bg-black/10 rounded w-full"></div>
+          <div className="h-3 bg-black/10 rounded w-5/6"></div>
+          <div className="h-3 bg-black/10 rounded w-4/6"></div>
+      </div>
+  );
+
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
@@ -166,7 +190,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
         <button onClick={onClose} className="absolute top-4 right-4 z-20 text-black hover:bg-black hover:text-[#F5C71A] w-8 h-8 border-2 border-black flex items-center justify-center font-bold transition-colors">X</button>
         <div className="flex flex-col md:flex-row gap-8">
           
-          {/* LEFT COLUMN: Poster, User Actions, Credits */}
+          {/* LEFT COLUMN */}
           <div className="md:w-1/3 flex-shrink-0 flex flex-col items-center md:items-start space-y-4">
             <img src={displayImage || ''} className="w-full border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] object-cover" />
             
@@ -193,54 +217,20 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                 </div>
             </div>
 
-            {film.streamingServices && film.streamingServices.length > 0 && (
-                <div className="w-full">
-                    <div className="text-[10px] font-bold uppercase opacity-60 mb-1">Where to watch:</div>
-                    <div className="flex flex-wrap gap-1">
-                        {film.streamingServices.map(s => (
-                            <span key={s} className="px-2 py-1 bg-black text-[#F5C71A] text-[9px] font-bold uppercase border border-white/20">{s}</span>
-                        ))}
-                    </div>
-                </div>
-            )}
-
-            {/* CREDITS BOX */}
             <div className="w-full text-black border-2 border-black bg-white/20 p-3 text-sm space-y-2">
-               <div className="grid grid-cols-[80px_1fr] gap-2 border-b border-black/20 pb-2">
-                  <span className="font-bold uppercase opacity-70">Director</span>
-                  <span className="font-bold">{displayDirector}</span>
-               </div>
-               <div className="grid grid-cols-[80px_1fr] gap-2 border-b border-black/20 pb-2">
-                  <span className="font-bold uppercase opacity-70">Cast</span>
-                  <span className="font-medium text-xs leading-tight">{displayCast && displayCast.length > 0 ? displayCast.slice(0, 3).join(', ') : '-'}</span>
-               </div>
-               <div className="grid grid-cols-[80px_1fr] gap-2 border-b border-black/20 pb-2">
-                  <span className="font-bold uppercase opacity-70">Writer</span>
-                  <span className="font-medium italic">{displayScreenplay ? displayScreenplay.join(', ') : '-'}</span>
-               </div>
-               <div className="grid grid-cols-[80px_1fr] gap-2 border-b border-black/20 pb-2">
-                  <span className="font-bold uppercase opacity-70">DOP</span>
-                  <span className="font-medium">{displayDop.length > 0 ? displayDop.join(', ') : '-'}</span>
-               </div>
-               <div className="grid grid-cols-[80px_1fr] gap-2 border-b border-black/20 pb-2">
-                  <span className="font-bold uppercase opacity-70">Music</span>
-                  <span className="font-medium italic">{displayMusic ? displayMusic.join(', ') : '-'}</span>
-               </div>
-               <div className="grid grid-cols-[80px_1fr] gap-2">
-                  <span className="font-bold uppercase opacity-70">Runtime</span>
-                  <span className="font-bold">{displayRuntime}m</span>
-               </div>
+               <div className="grid grid-cols-[80px_1fr] gap-2 border-b border-black/20 pb-2"><span className="font-bold uppercase opacity-70">Director</span><span className="font-bold">{displayDirector}</span></div>
+               <div className="grid grid-cols-[80px_1fr] gap-2 border-b border-black/20 pb-2"><span className="font-bold uppercase opacity-70">Cast</span><span className="font-medium text-xs leading-tight">{displayCast && displayCast.length > 0 ? displayCast.slice(0, 3).join(', ') : '-'}</span></div>
+               <div className="grid grid-cols-[80px_1fr] gap-2 border-b border-black/20 pb-2"><span className="font-bold uppercase opacity-70">Writer</span><span className="font-medium italic">{displayScreenplay ? displayScreenplay.join(', ') : '-'}</span></div>
+               <div className="grid grid-cols-[80px_1fr] gap-2"><span className="font-bold uppercase opacity-70">Runtime</span><span className="font-bold">{displayRuntime}m</span></div>
             </div>
           </div>
 
-          {/* RIGHT COLUMN: Content */}
+          {/* RIGHT COLUMN */}
           <div className="md:w-2/3 flex-grow flex flex-col gap-6">
             <header className="border-b-4 border-black pb-4">
               <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter leading-none mb-2">{film.title}</h2>
               <div className="flex justify-between items-end">
-                <div className="flex gap-4">
-                     <p className="text-xl font-mono font-bold">YEAR: {film.year}</p>
-                </div>
+                <div className="flex gap-4"><p className="text-xl font-mono font-bold">YEAR: {film.year}</p></div>
                 {listTitle && <p className="text-xs font-mono opacity-60 uppercase">Context: {listTitle}</p>}
               </div>
             </header>
@@ -252,49 +242,35 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
             </div>}
 
             <div className="space-y-6">
-                {/* SYNOPSIS */}
+                {/* SYNOPSIS - ALWAYS VISIBLE */}
                 <div className="bg-[#F5C71A] p-4 border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                     <h3 className="font-black text-lg mb-2 uppercase">Synopsis</h3>
-                    <p className="text-lg font-medium leading-relaxed font-sans">
-                        {displaySynopsis}
-                    </p>
+                    <p className="text-lg font-medium leading-relaxed font-sans">{displaySynopsis}</p>
                 </div>
 
-                {/* AI ANALYSIS & TRIVIA */}
+                {/* AI ANALYSIS - ALWAYS RENDER CONTAINER */}
                 <div className="flex flex-col gap-6">
                     <div>
                         <div className="flex justify-between items-center mb-2">
                             <h3 className="font-black text-lg uppercase">Why This Film?</h3>
                         </div>
-                        {loading ? (
-                            <div className="text-lg italic font-medium font-mono animate-pulse opacity-60">
-                                Consulting the archives...
-                            </div>
-                        ) : (
-                            <p className="text-lg italic font-medium">
-                                {aiData?.analysis}
-                            </p>
-                        )}
+                        {loading ? <TextSkeleton /> : <p className="text-lg italic font-medium">{aiData.analysis}</p>}
                     </div>
                     
-                    {/* TRIVIA BOX - HIGH VISIBILITY STYLE */}
+                    {/* TRIVIA BOX - ALWAYS RENDER CONTAINER */}
                     <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-4 min-h-[100px]">
                         <div className="absolute -top-3 left-4 bg-black text-[#F5C71A] px-3 py-1 text-xs font-black uppercase tracking-widest border border-black transform -rotate-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)]">
                             ★ SHERPA INTEL
                         </div>
                         {loading ? (
-                            <p className="font-mono text-sm leading-relaxed text-black pt-2 animate-pulse opacity-50">
-                                Decrypting data...
-                            </p>
+                            <div className="pt-2"><TextSkeleton /></div>
                         ) : (
-                            <p className="font-mono text-sm leading-relaxed text-black pt-2">
-                                {aiData?.trivia}
-                            </p>
+                            <p className="font-mono text-sm leading-relaxed text-black pt-2">{aiData.trivia}</p>
                         )}
                     </div>
                 </div>
 
-                {/* AI VIBES (CURATOR RECOMMENDS) - VISUAL GRID STYLE */}
+                {/* AI VIBES - ALWAYS RENDER CONTAINER */}
                 <div className="pt-6 border-t-4 border-black">
                     <h3 className="font-black text-lg mb-4 uppercase">Curator Recommends</h3>
                     <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] min-h-[150px]">
@@ -303,10 +279,14 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                         </div>
                         <div className="pt-2">
                             {loading ? (
-                                <div className="font-mono text-sm opacity-50 animate-pulse">Scanning filmography...</div>
+                                <div className="grid grid-cols-3 gap-3 animate-pulse">
+                                    <div className="aspect-[2/3] bg-black/10"></div>
+                                    <div className="aspect-[2/3] bg-black/10"></div>
+                                    <div className="aspect-[2/3] bg-black/10"></div>
+                                </div>
                             ) : (
                                 <div className="grid grid-cols-3 gap-3">
-                                    {(aiData?.vibes || []).map((vibe, idx) => (
+                                    {aiData.vibes.map((vibe, idx) => (
                                         <div key={idx} className="flex flex-col gap-1 group cursor-default">
                                             <div className="w-full aspect-[2/3] bg-gray-200 border-2 border-black overflow-hidden relative">
                                                 {vibePosters[vibe] ? (
@@ -318,13 +298,14 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                                             <span className="font-bold uppercase text-[10px] leading-tight text-center text-black">{vibe}</span>
                                         </div>
                                     ))}
+                                    {aiData.vibes.length === 0 && <div className="col-span-3 text-center text-xs font-mono opacity-50">No recommendations available.</div>}
                                 </div>
                             )}
                         </div>
                     </div>
                 </div>
 
-                {/* THEMES (KEYWORDS) */}
+                {/* THEMES */}
                 {realDetails?.keywords && realDetails.keywords.length > 0 && (
                     <div className="mt-4 pt-4 border-t-2 border-black/20">
                         <h3 className="font-black text-xs mb-2 uppercase tracking-widest opacity-60">THEMES</h3>
