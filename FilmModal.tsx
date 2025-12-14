@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Film, UserFilmLog } from '../types';
 import { getFilmAnalysis } from '../services/geminiService';
-import { getRealCredits, getRealPoster } from '../services/tmdb';
+import { getRealCredits, getRealPoster } from '../services/tmdb'; // TMDB'den veri çek
 import { getListsContainingFilm } from '../constants';
 
 interface FilmModalProps {
@@ -59,6 +59,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
     setAiError(false);
     
     if (film) {
+      
       // 1. TMDB'den kesin veri ve poster çek
       getRealCredits(film.title, film.year).then(data => setRealDetails(data));
       if (film.posterUrl && film.posterUrl.includes("placehold.co")) {
@@ -98,7 +99,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   const displayCast = realDetails?.cast || film.cast;
   const displayDop = realDetails?.dop || [];
 
-  // Right Side Data
+  // Right Side Data (Prioritize Real Details for facts, AI for insights)
   const displaySynopsis = realDetails?.overview || film.plot || "No details available.";
   const displayVoteAverage = realDetails?.vote_average ? realDetails.vote_average.toFixed(1) : (film.imdbScore ? film.imdbScore.toString() : "-");
   
@@ -238,7 +239,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                         <p className={`text-lg italic font-medium ${loading ? 'opacity-50 animate-pulse' : ''}`}>
                             {loading 
                                 ? "Consulting Archives..." 
-                                : (aiData?.analysis || "Analysis currently unavailable. Please try again.")}
+                                : (aiError ? "Analysis unavailable. Connection to The Sherpa lost." : (aiData?.analysis || "Analysis unavailable."))}
                         </p>
                     </div>
                     
@@ -248,7 +249,9 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                         <p className={`text-sm font-mono opacity-80 ${loading ? 'animate-pulse' : ''}`}>
                           {loading 
                             ? "Retrieving classified data..." 
-                            : (aiData?.trivia || "Trivia unavailable.")}
+                            : (aiError 
+                                ? "Trivia unavailable." 
+                                : (aiData?.trivia || "No trivia recorded."))}
                         </p>
                     </div>
                 </div>
@@ -256,26 +259,22 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                 {/* AI VIBES (CURATOR RECOMMENDS) - ALWAYS VISIBLE OR PLACEHOLDER */}
                 <div className="pt-6 border-t-4 border-black">
                     <h3 className="font-black text-lg mb-4 uppercase">Curator Recommends (Vibes)</h3>
-                    {loading ? (
-                        <div className="flex flex-col gap-2 opacity-50 animate-pulse">
-                            <div className="h-8 bg-black/10"></div>
-                            <div className="h-8 bg-black/10"></div>
-                            <div className="h-8 bg-black/10"></div>
-                        </div>
-                    ) : (
-                        <div className="flex flex-col gap-2">
-                            {(aiData?.vibes && aiData.vibes.length > 0) ? (
-                                aiData.vibes.map((vibe, idx) => (
-                                    <div key={idx} className="flex items-center gap-3 border-2 border-transparent hover:border-black p-2 transition-all cursor-default">
-                                        <div className="w-2 h-2 bg-black"></div>
-                                        <span className="font-bold uppercase text-lg">{vibe}</span>
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-sm font-mono opacity-60">Recommendations unavailable.</p>
-                            )}
-                        </div>
-                    )}
+                    <div className="flex flex-col gap-2">
+                        {loading ? (
+                            <div className="opacity-50 animate-pulse text-sm font-mono">Curating recommendations...</div>
+                        ) : (aiData?.vibes && aiData.vibes.length > 0 && !aiError) ? (
+                            aiData.vibes.map((vibe, idx) => (
+                                <div key={idx} className="flex items-center gap-3 border-2 border-transparent hover:border-black p-2 transition-all cursor-default">
+                                    <div className="w-2 h-2 bg-black"></div>
+                                    <span className="font-bold uppercase text-lg">{vibe}</span>
+                                </div>
+                            ))
+                        ) : (
+                            <p className="text-sm font-mono opacity-60">
+                                {aiError ? "Recommendations unavailable." : "No recommendations found."}
+                            </p>
+                        )}
+                    </div>
                 </div>
 
                 {/* THEMES (KEYWORDS) */}
