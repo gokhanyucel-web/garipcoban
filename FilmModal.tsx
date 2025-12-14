@@ -19,6 +19,7 @@ interface FilmModalProps {
 
 const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, onNavigateToList, sherpaNote, isEditing, onSaveNote, isUGC, listTitle }) => {
   const [aiData, setAiData] = useState<{ analysis: string, trivia: string, vibes: string[] } | null>(null);
+  const [vibePosters, setVibePosters] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [aiError, setAiError] = useState(false);
   const [noteContent, setNoteContent] = useState(sherpaNote || "");
@@ -32,11 +33,23 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
       setLoading(true);
       setAiError(false);
       setAiData(null);
+      setVibePosters({});
       
       getFilmAnalysis(currentFilm.title, currentFilm.director, currentFilm.year)
         .then(data => { 
             if (data) {
-                setAiData(data); 
+                setAiData(data);
+                // Fetch posters for vibes
+                if (data.vibes && data.vibes.length > 0) {
+                    data.vibes.forEach(vibeTitle => {
+                        // Use a generic year (0) for search flexibility
+                        getRealPoster(vibeTitle, 0).then(url => {
+                            if (url) {
+                                setVibePosters(prev => ({...prev, [vibeTitle]: url}));
+                            }
+                        });
+                    });
+                }
             } else {
                 setAiError(true);
             }
@@ -55,6 +68,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
     setRealDetails(null);
     setRealPoster(null);
     setAiData(null);
+    setVibePosters({});
     setLoading(false);
     setAiError(false);
     
@@ -242,7 +256,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                         </p>
                     </div>
                     
-                    {/* TRIVIA BOX - HIGH VISIBILITY STYLE - RENAMED TO INTEL */}
+                    {/* TRIVIA BOX - HIGH VISIBILITY STYLE */}
                     <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-4">
                         <div className="absolute -top-3 left-4 bg-black text-[#F5C71A] px-3 py-1 text-xs font-black uppercase tracking-widest border border-black transform -rotate-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)]">
                             ★ SHERPA INTEL
@@ -257,23 +271,31 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     </div>
                 </div>
 
-                {/* AI VIBES (CURATOR RECOMMENDS) - HIGH VISIBILITY STYLE */}
+                {/* AI VIBES (CURATOR RECOMMENDS) - VISUAL GRID STYLE */}
                 <div className="pt-6 border-t-4 border-black">
                     <h3 className="font-black text-lg mb-4 uppercase">Curator Recommends</h3>
                     <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                          <div className="absolute -top-3 left-4 bg-black text-[#F5C71A] px-3 py-1 text-xs font-black uppercase tracking-widest border border-black transform rotate-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)]">
                             Vibes Check
                         </div>
-                        <div className="flex flex-col gap-2 pt-2">
+                        <div className="pt-2">
                             {loading ? (
                                 <div className="opacity-50 animate-pulse text-sm font-mono">Curating recommendations...</div>
                             ) : (aiData?.vibes && aiData.vibes.length > 0 && !aiError) ? (
-                                aiData.vibes.map((vibe, idx) => (
-                                    <div key={idx} className="flex items-center gap-3 border-b border-black/10 last:border-0 pb-1 last:pb-0">
-                                        <div className="w-1.5 h-1.5 bg-black rounded-full"></div>
-                                        <span className="font-bold uppercase text-lg leading-tight">{vibe}</span>
-                                    </div>
-                                ))
+                                <div className="grid grid-cols-3 gap-3">
+                                    {aiData.vibes.map((vibe, idx) => (
+                                        <div key={idx} className="flex flex-col gap-1 group cursor-default">
+                                            <div className="w-full aspect-[2/3] bg-gray-200 border-2 border-black overflow-hidden relative">
+                                                {vibePosters[vibe] ? (
+                                                    <img src={vibePosters[vibe]} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" />
+                                                ) : (
+                                                    <div className="w-full h-full flex items-center justify-center bg-black/10 text-[9px] text-center p-1 font-mono uppercase opacity-50">Image Missing</div>
+                                                )}
+                                            </div>
+                                            <span className="font-bold uppercase text-[10px] leading-tight text-center">{vibe}</span>
+                                        </div>
+                                    ))}
+                                </div>
                             ) : (
                                 <p className="text-sm font-mono opacity-60 text-black">
                                     {aiError ? "Recommendations unavailable. (Offline)" : "No recommendations found."}
