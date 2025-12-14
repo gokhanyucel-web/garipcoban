@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Film, UserFilmLog } from '../types';
 import { getFilmAnalysis } from '../services/geminiService';
 import { getRealCredits, getRealPoster } from '../services/tmdb';
-import { getListsContainingFilm } from '../constants';
+import { getListsContainingFilm, getAllFilms } from '../constants';
 
 interface FilmModalProps {
   film: Film | null;
@@ -21,7 +21,6 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   const [aiData, setAiData] = useState<{ analysis: string, trivia: string, vibes: string[] } | null>(null);
   const [vibePosters, setVibePosters] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
-  const [aiError, setAiError] = useState(false);
   const [noteContent, setNoteContent] = useState(sherpaNote || "");
   const [hoverRating, setHoverRating] = useState(0);
   
@@ -29,38 +28,52 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   const [realDetails, setRealDetails] = useState<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[], keywords: string[]} | null>(null);
   const [realPoster, setRealPoster] = useState<string | null>(null);
 
-  const fetchAnalysis = (currentFilm: Film) => {
+  const fetchVibePosters = (titles: string[]) => {
+      titles.forEach(vibeTitle => {
+        getRealPoster(vibeTitle, 0).then(url => {
+            if (url) {
+                setVibePosters(prev => ({...prev, [vibeTitle]: url}));
+            }
+        });
+      });
+  };
+
+  const fetchAnalysis = async (currentFilm: Film) => {
       setLoading(true);
-      setAiError(false);
       setAiData(null);
       setVibePosters({});
       
-      getFilmAnalysis(currentFilm.title, currentFilm.director, currentFilm.year)
-        .then(data => { 
-            if (data) {
-                setAiData(data);
-                // Fetch posters for vibes
-                if (data.vibes && data.vibes.length > 0) {
-                    data.vibes.forEach(vibeTitle => {
-                        // Use a generic year (0) for search flexibility
-                        getRealPoster(vibeTitle, 0).then(url => {
-                            if (url) {
-                                setVibePosters(prev => ({...prev, [vibeTitle]: url}));
-                            }
-                        });
-                    });
-                }
-            } else {
-                setAiError(true);
-            }
-        })
-        .catch((err) => {
-            console.error("VIRGIL: Analysis Error", err);
-            setAiError(true);
-        })
-        .finally(() => {
-            setLoading(false);
-        });
+      // 1. Try Gemini API
+      const aiResult = await getFilmAnalysis(currentFilm.title, currentFilm.director, currentFilm.year);
+      
+      if (aiResult) {
+          setAiData(aiResult);
+          fetchVibePosters(aiResult.vibes);
+          setLoading(false);
+          return;
+      }
+
+      // 2. Fallback: Internal Logic (The "Sherpa Protocol")
+      // If AI fails (no key, or error), we use local data to ensure UI is never empty.
+      
+      // Generate Vibes from related films in the database
+      const allFilms = getAllFilms();
+      // Simple shuffle based on year proximity to find somewhat relevant films
+      const similar = allFilms
+          .filter(f => f.id !== currentFilm.id && Math.abs(f.year - currentFilm.year) < 15)
+          .sort(() => 0.5 - Math.random())
+          .slice(0, 3)
+          .map(f => f.title);
+
+      const fallbackData = {
+          analysis: currentFilm.briefing || currentFilm.plot || `A pivotal work by ${currentFilm.director}, released in ${currentFilm.year}. Essential viewing for the archive.`,
+          trivia: "Live uplink unavailable. Displaying archive cache.",
+          vibes: similar.length > 0 ? similar : ["Metropolis", "The Godfather", "Pulp Fiction"]
+      };
+
+      setAiData(fallbackData);
+      fetchVibePosters(fallbackData.vibes);
+      setLoading(false);
   };
 
   useEffect(() => {
@@ -70,7 +83,6 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
     setAiData(null);
     setVibePosters({});
     setLoading(false);
-    setAiError(false);
     
     if (film) {
       // 1. TMDB'den kesin veri ve poster çek
@@ -88,9 +100,14 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
           });
       }
 
-      // 2. Gemini'den yorum/analiz çek
+      // 2. Gemini'den yorum/analiz çek veya Fallback kullan
       if (film.isCustomEntry) {
-         setAiData({ analysis: film.plot || "Custom entry curated by user.", trivia: "Added via Custom List.", vibes: [] });
+         const customData = { 
+             analysis: film.plot || "Custom entry curated by user.", 
+             trivia: "Added via Custom List.", 
+             vibes: [] 
+         };
+         setAiData(customData);
       } else {
         fetchAnalysis(film);
       }
@@ -240,19 +257,19 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     <div>
                         <div className="flex justify-between items-center mb-2">
                             <h3 className="font-black text-lg uppercase">Why This Film?</h3>
-                            {(aiError || (!loading && !aiData)) && (
+                            {(!loading && !aiData) && (
                                 <button 
                                     onClick={() => fetchAnalysis(film)} 
                                     className="text-xs bg-black text-[#F5C71A] px-2 py-1 uppercase font-bold hover:scale-105"
                                 >
-                                    {aiError ? "Retry" : "Analyze"}
+                                    Force Refresh
                                 </button>
                             )}
                         </div>
                         <p className={`text-lg italic font-medium ${loading ? 'opacity-50 animate-pulse' : ''}`}>
                             {loading 
                                 ? "Consulting Archives..." 
-                                : (aiError ? "Analysis unavailable. Connection to The Sherpa lost." : (aiData?.analysis || "Analysis pending..."))}
+                                : (aiData?.analysis || "Accessing mainframe...")}
                         </p>
                     </div>
                     
@@ -264,9 +281,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                         <p className={`font-mono text-sm leading-relaxed text-black pt-2 ${loading ? 'animate-pulse opacity-50' : ''}`}>
                           {loading 
                             ? "Retrieving classified data..." 
-                            : (aiError 
-                                ? "Intel unavailable. (Offline)" 
-                                : (aiData?.trivia || "No intelligence recorded for this entry."))}
+                            : (aiData?.trivia || "Archive entry secured.")}
                         </p>
                     </div>
                 </div>
@@ -281,9 +296,9 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                         <div className="pt-2">
                             {loading ? (
                                 <div className="opacity-50 animate-pulse text-sm font-mono">Curating recommendations...</div>
-                            ) : (aiData?.vibes && aiData.vibes.length > 0 && !aiError) ? (
+                            ) : (
                                 <div className="grid grid-cols-3 gap-3">
-                                    {aiData.vibes.map((vibe, idx) => (
+                                    {(aiData?.vibes || []).map((vibe, idx) => (
                                         <div key={idx} className="flex flex-col gap-1 group cursor-default">
                                             <div className="w-full aspect-[2/3] bg-gray-200 border-2 border-black overflow-hidden relative">
                                                 {vibePosters[vibe] ? (
@@ -292,14 +307,11 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                                                     <div className="w-full h-full flex items-center justify-center bg-black/10 text-[9px] text-center p-1 font-mono uppercase opacity-50">Image Missing</div>
                                                 )}
                                             </div>
-                                            <span className="font-bold uppercase text-[10px] leading-tight text-center">{vibe}</span>
+                                            <span className="font-bold uppercase text-[10px] leading-tight text-center text-black">{vibe}</span>
                                         </div>
                                     ))}
+                                    {(!aiData?.vibes || aiData.vibes.length === 0) && <div className="text-xs font-mono opacity-50">No data found.</div>}
                                 </div>
-                            ) : (
-                                <p className="text-sm font-mono opacity-60 text-black">
-                                    {aiError ? "Recommendations unavailable. (Offline)" : "No recommendations found."}
-                                </p>
                             )}
                         </div>
                     </div>
