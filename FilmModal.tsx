@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Film, UserFilmLog } from '../types';
 import { getFilmAnalysis } from '../services/geminiService';
-import { getRealCredits, getRealPoster } from '../services/tmdb'; // TMDB'den veri çek
+import { getRealCredits, getRealPoster } from '../services/tmdb';
 import { getListsContainingFilm } from '../constants';
 
 interface FilmModalProps {
@@ -35,7 +35,8 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
       
       getFilmAnalysis(currentFilm.title, currentFilm.director, currentFilm.year)
         .then(data => { 
-            if (data && (data.analysis || data.trivia)) {
+            if (data) {
+                // Veri geldiyse (boş olsa bile) set et
                 setAiData(data); 
             } else {
                 setAiError(true);
@@ -99,7 +100,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   const displayCast = realDetails?.cast || film.cast;
   const displayDop = realDetails?.dop || [];
 
-  // Right Side Data (Prioritize Real Details for facts, AI for insights)
+  // Right Side Data
   const displaySynopsis = realDetails?.overview || film.plot || "No details available.";
   const displayVoteAverage = realDetails?.vote_average ? realDetails.vote_average.toFixed(1) : (film.imdbScore ? film.imdbScore.toString() : "-");
   
@@ -239,12 +240,13 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                         <p className={`text-lg italic font-medium ${loading ? 'opacity-50 animate-pulse' : ''}`}>
                             {loading 
                                 ? "Consulting Archives..." 
-                                : (aiError ? "Analysis unavailable. Connection to The Sherpa lost." : (aiData?.analysis || "Analysis unavailable."))}
+                                : (aiError ? "Analysis unavailable. Connection to The Sherpa lost." : (aiData?.analysis || "Analysis pending..."))}
                         </p>
                     </div>
                     
                     {/* TRIVIA BOX - ALWAYS VISIBLE */}
-                    <div className="bg-black/5 p-4 border-2 border-black/10 border-dashed">
+                    {/* Using bg-black/10 to make it clearly visible for debugging/visual confirmation */}
+                    <div className="bg-black/10 p-4 border-2 border-black border-dashed mt-4 block">
                         <h3 className="font-black text-xs mb-1 uppercase">★ Trivia</h3>
                         <p className={`text-sm font-mono opacity-80 ${loading ? 'animate-pulse' : ''}`}>
                           {loading 
@@ -256,8 +258,8 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     </div>
                 </div>
 
-                {/* AI VIBES (CURATOR RECOMMENDS) - ALWAYS VISIBLE OR PLACEHOLDER */}
-                <div className="pt-6 border-t-4 border-black">
+                {/* AI VIBES (CURATOR RECOMMENDS) - ALWAYS VISIBLE */}
+                <div className="pt-6 border-t-4 border-black block">
                     <h3 className="font-black text-lg mb-4 uppercase">Curator Recommends (Vibes)</h3>
                     <div className="flex flex-col gap-2">
                         {loading ? (
