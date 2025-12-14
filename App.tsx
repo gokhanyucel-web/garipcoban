@@ -597,8 +597,11 @@ function App() {
         if (session) {
              const payload = {
                  list_id: listToSave.id,
-                 content: listToSave,
-                 updated_at: new Date().toISOString()
+                 content: {
+                     ...listToSave,
+                     updated_at: new Date().toISOString()
+                 }
+                 // REMOVED: updated_at (column does not exist in master_overrides usually, only content json)
              };
              await supabase.from('master_overrides').upsert(payload, { onConflict: 'list_id' });
         }
@@ -616,8 +619,7 @@ function App() {
                 id: listToSave.id,
                 user_id: session.user.id,
                 title: listToSave.title,
-                // FIX: Removed 'status' from top-level to prevent schema error
-                // status: listToSave.status || 'draft', 
+                // REMOVED: status (column does not exist)
                 content: {
                     // ✅ TÜM liste içeriğini content'e kaydet, status DAHİL
                     title: listToSave.title,
@@ -629,9 +631,10 @@ function App() {
                     sherpaNotes: listToSave.sherpaNotes,
                     author: listToSave.author,
                     privacy: listToSave.privacy,
-                    status: listToSave.status || 'draft'
+                    status: listToSave.status || 'draft',
+                    updated_at: new Date().toISOString() // FIX: Timestamp moved inside JSON
                 },
-                updated_at: new Date().toISOString()
+                // REMOVED: updated_at (column does not exist in custom_lists)
             };
             
             console.log("💾 Saving to Supabase:", payload);
@@ -729,7 +732,7 @@ function App() {
     // CRITICAL: Immutable update to the main list state so tabs update immediately
     setCustomLists(prev => prev.map(l => l.id === updatedList.id ? updatedList : l));
 
-    // Supabase Update - FIX: Update content, NOT missing 'status' column
+    // Supabase Update - FIX: Update content, NOT missing 'status' or 'updated_at' columns
     if (session) {
         const contentPayload = {
              title: updatedList.title,
@@ -741,7 +744,8 @@ function App() {
              sherpaNotes: updatedList.sherpaNotes,
              author: updatedList.author,
              privacy: updatedList.privacy,
-             status: newStatus // Embed status here
+             status: newStatus, // Embed status here
+             updated_at: new Date().toISOString() // Embed timestamp here
         };
         await supabase.from('custom_lists').update({ content: contentPayload }).eq('id', updatedList.id);
     }
