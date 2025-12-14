@@ -36,7 +36,6 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
       getFilmAnalysis(currentFilm.title, currentFilm.director, currentFilm.year)
         .then(data => { 
             if (data) {
-                // Veri geldiyse (boş olsa bile) set et
                 setAiData(data); 
             } else {
                 setAiError(true);
@@ -60,7 +59,6 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
     setAiError(false);
     
     if (film) {
-      
       // 1. TMDB'den kesin veri ve poster çek
       getRealCredits(film.title, film.year).then(data => setRealDetails(data));
       if (film.posterUrl && film.posterUrl.includes("placehold.co")) {
@@ -224,7 +222,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                 </div>
 
                 {/* AI ANALYSIS & TRIVIA */}
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-6">
                     <div>
                         <div className="flex justify-between items-center mb-2">
                             <h3 className="font-black text-lg uppercase">Why This Film?</h3>
@@ -244,38 +242,44 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                         </p>
                     </div>
                     
-                    {/* TRIVIA BOX - ALWAYS VISIBLE */}
-                    {/* Using bg-black/10 to make it clearly visible for debugging/visual confirmation */}
-                    <div className="bg-black/10 p-4 border-2 border-black border-dashed mt-4 block">
-                        <h3 className="font-black text-xs mb-1 uppercase">★ Trivia</h3>
-                        <p className={`text-sm font-mono opacity-80 ${loading ? 'animate-pulse' : ''}`}>
+                    {/* TRIVIA BOX - HIGH VISIBILITY STYLE */}
+                    <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mt-2">
+                        <div className="absolute -top-3 left-4 bg-black text-[#F5C71A] px-3 py-1 text-xs font-black uppercase tracking-widest border border-black transform -rotate-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)]">
+                            ★ Sherpa Trivia
+                        </div>
+                        <p className={`font-mono text-sm leading-relaxed text-black pt-2 ${loading ? 'animate-pulse opacity-50' : ''}`}>
                           {loading 
                             ? "Retrieving classified data..." 
                             : (aiError 
-                                ? "Trivia unavailable." 
-                                : (aiData?.trivia || "No trivia recorded."))}
+                                ? "Trivia unavailable. (Offline)" 
+                                : (aiData?.trivia || "No trivia recorded for this entry."))}
                         </p>
                     </div>
                 </div>
 
-                {/* AI VIBES (CURATOR RECOMMENDS) - ALWAYS VISIBLE */}
-                <div className="pt-6 border-t-4 border-black block">
-                    <h3 className="font-black text-lg mb-4 uppercase">Curator Recommends (Vibes)</h3>
-                    <div className="flex flex-col gap-2">
-                        {loading ? (
-                            <div className="opacity-50 animate-pulse text-sm font-mono">Curating recommendations...</div>
-                        ) : (aiData?.vibes && aiData.vibes.length > 0 && !aiError) ? (
-                            aiData.vibes.map((vibe, idx) => (
-                                <div key={idx} className="flex items-center gap-3 border-2 border-transparent hover:border-black p-2 transition-all cursor-default">
-                                    <div className="w-2 h-2 bg-black"></div>
-                                    <span className="font-bold uppercase text-lg">{vibe}</span>
-                                </div>
-                            ))
-                        ) : (
-                            <p className="text-sm font-mono opacity-60">
-                                {aiError ? "Recommendations unavailable." : "No recommendations found."}
-                            </p>
-                        )}
+                {/* AI VIBES (CURATOR RECOMMENDS) - HIGH VISIBILITY STYLE */}
+                <div className="pt-6 border-t-4 border-black">
+                    <h3 className="font-black text-lg mb-4 uppercase">Curator Recommends</h3>
+                    <div className="relative bg-white border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                         <div className="absolute -top-3 left-4 bg-black text-[#F5C71A] px-3 py-1 text-xs font-black uppercase tracking-widest border border-black transform rotate-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)]">
+                            Vibes Check
+                        </div>
+                        <div className="flex flex-col gap-2 pt-2">
+                            {loading ? (
+                                <div className="opacity-50 animate-pulse text-sm font-mono">Curating recommendations...</div>
+                            ) : (aiData?.vibes && aiData.vibes.length > 0 && !aiError) ? (
+                                aiData.vibes.map((vibe, idx) => (
+                                    <div key={idx} className="flex items-center gap-3 border-b border-black/10 last:border-0 pb-1 last:pb-0">
+                                        <div className="w-1.5 h-1.5 bg-black rounded-full"></div>
+                                        <span className="font-bold uppercase text-lg leading-tight">{vibe}</span>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="text-sm font-mono opacity-60 text-black">
+                                    {aiError ? "Recommendations unavailable. (Offline)" : "No recommendations found."}
+                                </p>
+                            )}
+                        </div>
                     </div>
                 </div>
 
