@@ -38,11 +38,13 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
             if (data) {
                 setAiData(data); 
             } else {
+                console.warn("Analysis returned null");
                 setAiError(true);
             }
             setLoading(false); 
         })
-        .catch(() => {
+        .catch((err) => {
+            console.error("Analysis failed", err);
             setAiError(true);
             setLoading(false);
         });

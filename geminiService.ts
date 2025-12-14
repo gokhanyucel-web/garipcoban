@@ -12,7 +12,7 @@ export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion
   try {
     const apiKey = process.env.API_KEY;
     if (!apiKey) {
-      console.warn("API Key not found in environment variables.");
+      console.warn("VIRGIL: API Key not found in environment variables.");
       return [];
     }
 
@@ -42,11 +42,13 @@ export const getAIListSuggestions = async (query: string): Promise<AI_Suggestion
     const text = response.text;
     if (!text) return [];
     
-    const data = JSON.parse(text) as AI_Suggestion[];
+    // Clean potential markdown code blocks just in case
+    const cleanText = text.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+    const data = JSON.parse(cleanText) as AI_Suggestion[];
     return data;
 
   } catch (error) {
-    console.error("Gemini API Error:", error);
+    console.error("Gemini List Gen Error:", error);
     return [];
   }
 };
@@ -55,7 +57,7 @@ export const getFilmAnalysis = async (title: string, director: string, year: num
   try {
     const apiKey = process.env.API_KEY;
     if (!apiKey) {
-        console.warn("Gemini API Key missing.");
+        console.warn("VIRGIL: Gemini API Key missing.");
         return null;
     }
 
@@ -90,7 +92,11 @@ export const getFilmAnalysis = async (title: string, director: string, year: num
         console.warn("Gemini returned empty text.");
         return null;
     }
-    return JSON.parse(text) as AIAnalysisResult;
+
+    // Clean potential markdown code blocks just in case
+    const cleanText = text.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+    return JSON.parse(cleanText) as AIAnalysisResult;
+
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
     return null;
