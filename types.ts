@@ -46,6 +46,8 @@ export interface Tier {
   films: Film[];
 }
 
+export type UserRole = 'user' | 'curator' | 'admin';
+
 export interface CuratedList {
   id: string;
   title: string;
@@ -59,6 +61,12 @@ export interface CuratedList {
   privacy?: 'public' | 'private';
   originalListId?: string;
   sherpaNotes?: Record<string, string>; // filmId -> note text
+
+  // Discovery / curator attribution (set on lists fetched from OTHER users)
+  isExternal?: boolean;          // true if this list belongs to another user (read-only here)
+  authorRole?: UserRole;         // role of the list's author, for the verified ✓ badge
+  authorUsername?: string;       // author's profile username (used for /c/:username)
+  authorAvatar?: string;         // author's avatar url
 }
 
 export interface UserFilmLog {

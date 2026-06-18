@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './services/supabase';
-import { Film, CuratedList, UserDatabase, UserFilmLog, Tier, Badge, AI_Suggestion, SortOption, ListCategory } from './types';
+import { Film, CuratedList, UserDatabase, UserFilmLog, Tier, Badge, AI_Suggestion, SortOption, ListCategory, UserRole } from './types';
 import { ARCHIVE_CATEGORIES, getAllFilms, createFilm, BADGE_TITLES, getHash, INITIATE_SYNONYMS, ADEPT_SYNONYMS } from './constants';
 import FilmCard from './components/FilmCard';
 import FilmModal from './components/FilmModal';
+import VoicesStrip from './components/VoicesStrip';
+import CriticsView from './components/CriticsView';
+import CuratorProfile from './components/CuratorProfile';
 import { getAIListSuggestions } from './services/geminiService';
 import { getDirectorPicks, searchMovies } from './services/tmdb';
 import { Search, Twitter, Instagram, Mail, ShieldAlert, Save, Trash2, LogOut, User, MinusCircle, Check } from 'lucide-react';
@@ -137,20 +140,21 @@ const AuthScreen = ({ onAuth, onCancel }: { onAuth: (mode: 'signin' | 'signup', 
 
 interface MainLayoutProps {
   children: React.ReactNode;
-  activeView: 'home' | 'vault';
+  activeView: 'home' | 'vault' | 'critics';
   session: any;
-  isAdmin: boolean;
+  role: UserRole;
+  isCurator: boolean;
   onLogout: () => void;
   onOpenSearch: () => void;
-  onToggleAdmin: () => void;
-  onNavigate: (view: 'home' | 'vault' | 'auth') => void;
+  onNavigate: (view: 'home' | 'vault' | 'auth' | 'critics') => void;
 }
 
-const MainLayout: React.FC<MainLayoutProps> = ({ children, activeView, session, isAdmin, onLogout, onOpenSearch, onToggleAdmin, onNavigate }) => (
+const MainLayout: React.FC<MainLayoutProps> = ({ children, activeView, session, role, isCurator, onLogout, onOpenSearch, onNavigate }) => (
   <div className="min-h-screen w-full bg-[#F5C71A] text-black font-sans selection:bg-black selection:text-[#F5C71A] flex flex-col transition-colors duration-300">
     <header className="pt-12 pb-8 text-center px-4 relative">
          <div className="absolute top-8 right-8 flex gap-4">
-             {isAdmin && <span className="bg-red-600 text-white px-2 py-1 text-xs font-black uppercase border border-black animate-pulse">ADMIN MODE</span>}
+             {role === 'admin' && <span className="bg-red-600 text-white px-2 py-1 text-xs font-black uppercase border border-black">ADMIN</span>}
+             {role === 'curator' && <span className="bg-black text-[#F5C71A] px-2 py-1 text-xs font-black uppercase border border-black">CURATOR ✓</span>}
              {!session ? (
                  <button 
                    onClick={() => onNavigate('auth')}
@@ -172,9 +176,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, activeView, session, 
         <p className="text-xl md:text-3xl font-bold font-mono tracking-widest uppercase opacity-80 mb-8">Curated Cinematic Journeys</p>
         
         <div className="flex justify-center items-center gap-0 border-b-4 border-black w-full max-w-2xl mx-auto">
-          <button onClick={() => onNavigate('home')} className={`flex-1 py-4 text-xl md:text-2xl font-black uppercase tracking-widest text-center transition-all ${activeView === 'home' ? 'bg-black text-[#F5C71A]' : 'bg-transparent text-black hover:bg-black/10'}`}>Archive</button>
+          <button onClick={() => onNavigate('home')} className={`flex-1 py-4 text-lg md:text-2xl font-black uppercase tracking-widest text-center transition-all ${activeView === 'home' ? 'bg-black text-[#F5C71A]' : 'bg-transparent text-black hover:bg-black/10'}`}>Archive</button>
           <div className="w-1 h-full bg-black"></div>
-          <button onClick={() => onNavigate('vault')} className={`flex-1 py-4 text-xl md:text-2xl font-black uppercase tracking-widest text-center transition-all ${activeView === 'vault' ? 'bg-black text-[#F5C71A]' : 'bg-transparent text-black hover:bg-black/10'}`}>My Vault</button>
+          <button onClick={() => onNavigate('critics')} className={`flex-1 py-4 text-lg md:text-2xl font-black uppercase tracking-widest text-center transition-all ${activeView === 'critics' ? 'bg-black text-[#F5C71A]' : 'bg-transparent text-black hover:bg-black/10'}`}>Critics</button>
+          <div className="w-1 h-full bg-black"></div>
+          <button onClick={() => onNavigate('vault')} className={`flex-1 py-4 text-lg md:text-2xl font-black uppercase tracking-widest text-center transition-all ${activeView === 'vault' ? 'bg-black text-[#F5C71A]' : 'bg-transparent text-black hover:bg-black/10'}`}>My Vault</button>
         </div>
     </header>
     <main className="max-w-7xl mx-auto px-6 grid gap-16 mt-12 flex-grow w-full">
@@ -194,7 +200,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, activeView, session, 
               </div>
               <div className="flex flex-col items-end gap-8 text-right">
                   <div className="flex gap-6 text-sm font-bold uppercase tracking-widest">
-                      <button onClick={onToggleAdmin} className={`cursor-pointer hover:text-white hover:underline decoration-2 underline-offset-4 uppercase ${isAdmin ? 'text-red-500 font-black' : 'opacity-50'}`}>{isAdmin ? 'Admin Active' : 'Admin'}</button>
                       <a href="mailto:hello@virgil.app" className="cursor-pointer hover:text-white hover:underline decoration-2 underline-offset-4">Contact</a>
                   </div>
                   <div className="flex gap-4">
@@ -250,12 +255,12 @@ function App() {
   // --- STATE ---
   const [isLoading, setIsLoading] = useState(true); // Blocking load state
   const [session, setSession] = useState<any>(null);
-  const [view, setView] = useState<'home' | 'vault' | 'auth'>('home'); // SPA State
+  const [view, setView] = useState<'home' | 'vault' | 'auth' | 'critics'>('home'); // SPA State
   
   // Data State
   const [userDb, setUserDb] = useState<UserDatabase>({});
   const [vaultIds, setVaultIds] = useState<string[]>([]);
-  const [profile, setProfile] = useState<{name: string, motto: string, avatar?: string}>({ name: "Initiate", motto: "The Unwritten" });
+  const [profile, setProfile] = useState<{name: string, motto: string, avatar?: string, role: UserRole}>({ name: "Initiate", motto: "The Unwritten", role: 'user' });
   
   // UI State
   const [selectedList, setSelectedList] = useState<CuratedList | null>(null);
@@ -264,8 +269,7 @@ function App() {
   const [editingList, setEditingList] = useState<CuratedList | null>(null);
   const [isAICreatorOpen, setIsAICreatorOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
-  
+
   // Editor / Filter State
   const [viewMode, setViewMode] = useState<'cinema' | 'series'>('cinema');
   const [sortOption, setSortOption] = useState<SortOption>('curator');
@@ -276,6 +280,10 @@ function App() {
   // UGC Editor State
   const [customLists, setCustomLists] = useState<CuratedList[]>([]);
   const [masterOverrides, setMasterOverrides] = useState<Record<string, CuratedList>>({});
+
+  // Discovery State: curator-published lists from OTHER users (public, read-only here)
+  const [externalLists, setExternalLists] = useState<CuratedList[]>([]);
+  const [selectedCurator, setSelectedCurator] = useState<string | null>(null);
   const [aiCreatorQuery, setAiCreatorQuery] = useState("");
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<(AI_Suggestion & { posterUrl?: string })[]>([]);
@@ -285,6 +293,12 @@ function App() {
   const [isEditContextMode, setIsEditContextMode] = useState<string | null>(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- ROLE CAPABILITIES (server-enforced; derived from the profile) ---
+  // Replaces the old spoofable client-side "Admin" toggle. The real
+  // authority lives in Supabase RLS — these flags only drive the UI.
+  const isAdmin = profile.role === 'admin';
+  const isCurator = profile.role === 'curator' || isAdmin;
 
   // --- PERSISTENCE & INIT ---
 
@@ -300,11 +314,13 @@ function App() {
         const userName = profileData?.username || "Initiate";
         const userMotto = profileData?.motto || "The Unwritten";
         const userAvatar = profileData?.avatar_url || undefined;
+        const userRole: UserRole = (profileData?.role as UserRole) || 'user';
 
         setProfile({
             name: userName,
             motto: userMotto,
-            avatar: userAvatar
+            avatar: userAvatar,
+            role: userRole
         });
 
         // 2. Logs
@@ -338,8 +354,10 @@ function App() {
                 return {
                     ...listContent,
                     id: item.id,
-                    // FIX: Read status from content because it doesn't exist as a column
-                    status: listContent.status || item.status || 'draft',
+                    // Real columns now exist (migration 001); fall back to the
+                    // legacy content blob for rows saved before the migration.
+                    status: item.status || listContent.status || 'draft',
+                    privacy: item.privacy || listContent.privacy || 'private',
                     author: userName, // ✅ Artık userName hazır!
                     isCustom: true,
                     tiers: listContent.tiers || [],
@@ -367,6 +385,74 @@ function App() {
     }
   };
 
+  // Cross-user discovery: curator-authored lists that are published + public.
+  // RLS already restricts the rows to curator/admin authors, so non-curator
+  // lists never leak even though this query is role-agnostic. Runs for
+  // logged-out visitors too. Degrades silently before migration 001 is applied.
+  const fetchDiscoveryLists = async (currentUserId?: string) => {
+    try {
+      // Prefer the embedded query (needs FK custom_lists.user_id -> profiles.id).
+      let rows: any[] | null = null;
+      const embedded = await supabase
+        .from('custom_lists')
+        .select('*, profiles(username, avatar_url, role)')
+        .eq('status', 'published')
+        .eq('privacy', 'public')
+        .order('updated_at', { ascending: false });
+
+      if (!embedded.error && embedded.data) {
+        rows = embedded.data;
+      } else {
+        // Fallback when no FK embed is available: fetch lists, then authors.
+        const plain = await supabase
+          .from('custom_lists')
+          .select('*')
+          .eq('status', 'published')
+          .eq('privacy', 'public')
+          .order('updated_at', { ascending: false });
+        if (plain.error || !plain.data) {
+          console.warn('Discovery fetch skipped:', plain.error?.message);
+          return;
+        }
+        const authorIds = Array.from(new Set(plain.data.map((r: any) => r.user_id)));
+        const profilesRes = authorIds.length
+          ? await supabase.from('profiles').select('id, username, avatar_url, role').in('id', authorIds)
+          : { data: [] as any[] };
+        const byId: Record<string, any> = {};
+        (profilesRes.data || []).forEach((p: any) => { byId[p.id] = p; });
+        rows = plain.data.map((r: any) => ({ ...r, profiles: byId[r.user_id] || {} }));
+      }
+
+      const mapped: CuratedList[] = (rows || [])
+        .filter((item: any) => item.user_id !== currentUserId) // don't duplicate the user's own lists
+        .map((item: any): CuratedList => {
+          const content = item.content || {};
+          const prof = item.profiles || {};
+          return {
+            ...content,
+            id: item.id,
+            status: 'published',
+            privacy: 'public',
+            isCustom: true,
+            isExternal: true,
+            author: prof.username || item.author_name || content.author || 'Curator',
+            authorRole: (prof.role as UserRole) || 'curator',
+            authorUsername: prof.username || undefined,
+            authorAvatar: prof.avatar_url || undefined,
+            tiers: content.tiers || [],
+            seriesTiers: content.seriesTiers,
+            sherpaNotes: content.sherpaNotes || {}
+          };
+        })
+        // Belt-and-suspenders (RLS already guarantees this): curators/admins only.
+        .filter(l => l.authorRole === 'curator' || l.authorRole === 'admin');
+
+      setExternalLists(mapped);
+    } catch (e) {
+      console.warn('Discovery fetch error:', e);
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
     
@@ -391,6 +477,8 @@ function App() {
                     setMasterOverrides(overridesMap);
                 }
             }
+            // Public curator discovery — for logged-in users AND visitors.
+            await fetchDiscoveryLists(existingSession?.user?.id);
         }
       } catch (e) {
         console.error("Initialization error:", e);
@@ -409,8 +497,8 @@ function App() {
       } else {
         setUserDb({});
         setVaultIds([]);
-        setCustomLists([]); 
-        setProfile({ name: "Initiate", motto: "The Unwritten" });
+        setCustomLists([]);
+        setProfile({ name: "Initiate", motto: "The Unwritten", role: 'user' });
         setView('home');
         localStorage.removeItem('virgil_active_view');
       }
@@ -467,7 +555,7 @@ function App() {
     setView('home');
   };
 
-  const handleNavigate = (targetView: 'home' | 'vault' | 'auth') => {
+  const handleNavigate = (targetView: 'home' | 'vault' | 'auth' | 'critics') => {
     if (targetView === 'vault' && !session) {
       setView('auth');
     } else {
@@ -475,10 +563,11 @@ function App() {
       if (targetView === 'vault') localStorage.setItem('virgil_active_view', 'vault');
       else if (targetView === 'home') localStorage.setItem('virgil_active_view', 'home');
     }
-    
+
     if(targetView !== 'auth') {
         setSelectedList(null);
         setIsEditorMode(false);
+        setSelectedCurator(null);
     }
   };
 
@@ -533,9 +622,11 @@ function App() {
   };
 
   const handleNavigateToList = (listId: string) => {
-    const allLists = [...ARCHIVE_CATEGORIES.flatMap(c => c.lists).map(l => masterOverrides[l.id] || l), ...customLists];
+    const allLists = [...ARCHIVE_CATEGORIES.flatMap(c => c.lists).map(l => masterOverrides[l.id] || l), ...customLists, ...externalLists];
     const target = allLists.find(l => l.id === listId);
     if (target) {
+        // Only the user's OWN custom lists live in the vault view; external
+        // curator lists open as a detail overlay without switching tabs.
         if (customLists.some(l => l.id === listId)) {
             setView('vault');
             localStorage.setItem('virgil_active_view', 'vault');
@@ -569,8 +660,8 @@ function App() {
       id: newId,
       title: `${deepCopy.title} (Remix)`,
       subtitle: "My Custom Journey",
-      author: profile.name, 
-      privacy: 'public', 
+      author: profile.name,
+      privacy: 'private', // a remix is a personal copy; only curators publish
       originalListId: deepCopy.id,
       isCustom: true,
       sherpaNotes: {},
@@ -597,6 +688,14 @@ function App() {
     
     // Deep copy to break reference from editing state
     let listToSave = JSON.parse(JSON.stringify(editingList));
+
+    // "Curators publish, users track": only curators/admins may keep a list
+    // public/published. Everyone else is forced back to a private draft.
+    // (This is also enforced server-side by RLS + a trigger; this is just UX.)
+    if (!isCurator) {
+      listToSave.privacy = 'private';
+      listToSave.status = 'draft';
+    }
 
     // Master list override (admin only)
     if (!listToSave.id.startsWith('custom_')) {
@@ -626,13 +725,18 @@ function App() {
         }
         
         if (session) {
+            const updatedAt = new Date().toISOString();
             const payload = {
                 id: listToSave.id,
                 user_id: session.user.id,
                 title: listToSave.title,
-                // REMOVED: status (column does not exist)
+                // Real columns (migration 001) — these drive RLS + curator discovery:
+                status: listToSave.status || 'draft',
+                privacy: listToSave.privacy || 'private',
+                author_name: listToSave.author || null,
+                updated_at: updatedAt,
+                // JSON mirror kept for backward compatibility / full list content:
                 content: {
-                    // ✅ TÜM liste içeriğini content'e kaydet, status DAHİL
                     title: listToSave.title,
                     subtitle: listToSave.subtitle,
                     description: listToSave.description,
@@ -643,9 +747,8 @@ function App() {
                     author: listToSave.author,
                     privacy: listToSave.privacy,
                     status: listToSave.status || 'draft',
-                    updated_at: new Date().toISOString() // FIX: Timestamp moved inside JSON
+                    updated_at: updatedAt
                 },
-                // REMOVED: updated_at (column does not exist in custom_lists)
             };
             
             console.log("💾 Saving to Supabase:", payload);
@@ -690,7 +793,7 @@ function App() {
           tiers: [{ level: 1, name: "TIER 1", films: [] }, { level: 2, name: "TIER 2", films: [] }],
           isCustom: true,
           author: profile.name,
-          privacy: 'public',
+          privacy: 'private',
           status: 'draft'
       };
       setCustomLists(prev => [...prev, newList]);
@@ -725,7 +828,7 @@ function App() {
           id: newId, title: aiCreatorQuery.toUpperCase(), subtitle: "Curated Journey",
           description: `A custom list based on ${aiCreatorQuery}`,
           tiers: [{ level: 1, name: "ESSENTIALS", films: tier1Films }, { level: 2, name: "DEEP DIVE", films: tier2Films }, { level: 3, name: "TIER 3", films: [] }],
-          isCustom: true, author: profile.name, privacy: 'public', status: 'draft'
+          isCustom: true, author: profile.name, privacy: 'private', status: 'draft'
       };
       setCustomLists(prev => [...prev, newList]);
       setVaultIds(prev => [...prev, newId]);
@@ -739,18 +842,18 @@ function App() {
 
   const handleTogglePublish = async () => {
     if (!editingList) return;
-    // Fix: Explicitly type newStatus to satisfy CuratedList interface
+    if (!isCurator) return; // only curators/admins publish (also enforced by RLS)
+
     const newStatus: 'draft' | 'published' = editingList.status === 'published' ? 'draft' : 'published';
-    const updatedList: CuratedList = { ...editingList, status: newStatus };
-    
-    // Immediate Local Update for editing state
+    const newPrivacy: 'public' | 'private' = newStatus === 'published' ? 'public' : 'private';
+    const updatedList: CuratedList = { ...editingList, status: newStatus, privacy: newPrivacy };
+
+    // Immediate local update so the editor + vault tabs reflect the change.
     setEditingList(updatedList);
-    
-    // CRITICAL: Immutable update to the main list state so tabs update immediately
     setCustomLists(prev => prev.map(l => l.id === updatedList.id ? updatedList : l));
 
-    // Supabase Update - FIX: Update content, NOT missing 'status' or 'updated_at' columns
     if (session) {
+        const updatedAt = new Date().toISOString();
         const contentPayload = {
              title: updatedList.title,
              subtitle: updatedList.subtitle,
@@ -760,12 +863,15 @@ function App() {
              originalListId: updatedList.originalListId,
              sherpaNotes: updatedList.sherpaNotes,
              author: updatedList.author,
-             privacy: updatedList.privacy,
-             status: newStatus, // Embed status here
-             updated_at: new Date().toISOString() // Embed timestamp here
+             privacy: newPrivacy,
+             status: newStatus,
+             updated_at: updatedAt
         };
-        await supabase.from('custom_lists').update({ content: contentPayload }).eq('id', updatedList.id);
-        
+        // Write the REAL columns so RLS + discovery work; keep the JSON mirror too.
+        await supabase.from('custom_lists')
+          .update({ content: contentPayload, status: newStatus, privacy: newPrivacy, author_name: updatedList.author, updated_at: updatedAt })
+          .eq('id', updatedList.id);
+
         // Ensure Vault Link on Publish Toggle as well
         await supabase.from('vault').upsert(
             { user_id: session.user.id, list_id: updatedList.id },
@@ -930,28 +1036,36 @@ function App() {
   const sherpaIdentity = calculateSherpaIdentity();
 
   const getVaultLists = () => {
-    // 1. Filter ALL lists that are in Vault (Archive or Custom)
-    const vaultListObjects = [...ARCHIVE_CATEGORIES.flatMap(c => c.lists).map(l => masterOverrides[l.id] || l), ...customLists].filter(list => vaultIds.includes(list.id));
-    
+    // 1. Everything the user could have in their vault: house lists, their own
+    //    custom lists, and curator lists they're tracking (external).
+    const allKnown = [...ARCHIVE_CATEGORIES.flatMap(c => c.lists).map(l => masterOverrides[l.id] || l), ...customLists, ...externalLists];
+    const vaultListObjects = allKnown.filter(list => vaultIds.includes(list.id));
+
     // 2. ALSO include any custom list created by the current user, even if not in vault (Drafts etc.)
     //    This fixes the issue where new lists disappear if the vault link fails.
-    const myOwnLists = customLists.filter(l => true); // customLists is already filtered by userId in fetchUserData
-    
-    // Merge and Deduplicate
-    const allMyLists = Array.from(new Set([...vaultListObjects, ...myOwnLists]));
+    const myOwnLists = customLists; // already filtered by userId in fetchUserData
+
+    // Merge and dedupe BY ID (a plain Set on objects never deduped — latent bug).
+    const byId = new Map<string, CuratedList>();
+    [...vaultListObjects, ...myOwnLists].forEach(l => byId.set(l.id, l));
+    const allMyLists = Array.from(byId.values());
 
     const active: CuratedList[] = [];
     const drafts: CuratedList[] = [];
     const published: CuratedList[] = [];
     const completed: CuratedList[] = [];
-    
+
     allMyLists.forEach(list => {
       const prog = getListProgress(list);
-      
+
+      // Curator lists the user is TRACKING (not their own creation).
+      if (list.isExternal) {
+          if (prog >= 100) completed.push(list); else active.push(list);
+      }
       // Archive Lists Completed
-      if (prog >= 100 && !list.isCustom) {
+      else if (prog >= 100 && !list.isCustom) {
           completed.push(list);
-      } 
+      }
       // Custom Lists (Draft vs Published)
       else if (list.isCustom) {
           if (list.status === 'published') published.push(list);
@@ -979,6 +1093,8 @@ function App() {
   const currentTiers = getSortedTiers(currentTiersBase);
   const isSavedInVault = currentList ? vaultIds.includes(currentList.id) : false;
   const canRemix = currentList ? !currentList.isCustom : false;
+  // True only for the user's OWN custom lists (external curator lists are NOT editable here).
+  const isOwnList = currentList ? customLists.some(l => l.id === currentList.id) : false;
 
   // --- LOADING SCREEN ---
   if (isLoading) {
@@ -1029,13 +1145,18 @@ function App() {
       {/* 3. FILM MODAL */}
       {selectedFilm && !currentList && <FilmModal film={selectedFilm} log={userDb[selectedFilm.id]} onUpdateLog={handleUpdateLog} onClose={() => setSelectedFilm(null)} onNavigateToList={handleNavigateToList} listTitle="Global Search" />}
 
-      {/* 4. MAIN LAYOUT (Wraps Home/Vault) */}
-      {view !== 'auth' && !currentList && (
-        <MainLayout activeView={view as 'home' | 'vault'} session={session} isAdmin={isAdmin} onLogout={handleLogout} onOpenSearch={() => setIsSearchOpen(true)} onToggleAdmin={() => setIsAdmin(!isAdmin)} onNavigate={handleNavigate}>
+      {/* 4. MAIN LAYOUT (Wraps Home/Vault/Critics) */}
+      {view !== 'auth' && !currentList && !selectedCurator && (
+        <MainLayout activeView={view as 'home' | 'vault' | 'critics'} session={session} role={profile.role} isCurator={isCurator} onLogout={handleLogout} onOpenSearch={() => setIsSearchOpen(true)} onNavigate={handleNavigate}>
             
             {/* VIEW: ARCHIVE (HOME) */}
             {view === 'home' && (
                <div className="animate-fadeIn">
+                  <VoicesStrip
+                    lists={externalLists}
+                    onOpenList={(l) => { setSelectedList(l); setIsEditorMode(false); }}
+                    onSeeAll={() => handleNavigate('critics')}
+                  />
                   {ORDERED_CATEGORIES.map((category) => {
                      if (!category) return null;
                      const isExpanded = expandedCategories[category.title];
@@ -1163,7 +1284,26 @@ function App() {
                     </section>
                 </div>
             )}
+
+            {/* VIEW: CRITICS (public curator discovery) */}
+            {view === 'critics' && (
+                <CriticsView
+                    lists={externalLists}
+                    onOpenList={(l) => { setSelectedList(l); setIsEditorMode(false); }}
+                    onOpenCurator={(u) => setSelectedCurator(u)}
+                />
+            )}
         </MainLayout>
+      )}
+
+      {/* 4b. CURATOR PROFILE (public "space" for a critic) */}
+      {selectedCurator && !currentList && (
+        <CuratorProfile
+          username={selectedCurator}
+          lists={externalLists}
+          onOpenList={(l) => { setSelectedList(l); setIsEditorMode(false); }}
+          onBack={() => setSelectedCurator(null)}
+        />
       )}
 
       {/* 5. LIST DETAIL VIEW (Overrides Layout when selected) */}
@@ -1174,17 +1314,17 @@ function App() {
               <div className="flex gap-2 pointer-events-auto">
                  {isEditorMode ? (
                      <div className="flex gap-2 items-center">
-                        <button onClick={handleTogglePublish} className={`border-2 border-black px-4 py-2 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all ${editingList?.status === 'published' ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>{editingList?.status === 'published' ? 'UNPUBLISH' : 'PUBLISH'}</button>
+                        {isCurator && <button onClick={handleTogglePublish} className={`border-2 border-black px-4 py-2 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all ${editingList?.status === 'published' ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>{editingList?.status === 'published' ? 'UNPUBLISH' : 'PUBLISH'}</button>}
                         <button onClick={handleSaveList} className="bg-green-600 text-white border-2 border-black px-4 py-2 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1">SAVE & EXIT</button>
                      </div>
                  ) : (
                      <>
-                        {currentList.isCustom ? (
+                        {currentList.isCustom && isOwnList ? (
                              <button onClick={() => { setEditingList(currentList); setIsEditorMode(true); }} className="bg-white border-2 border-black px-4 py-2 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-black hover:text-[#F5C71A]">EDIT LIST</button>
                         ) : (
                              <>
                                  <button onClick={handleForkList} className="bg-white border-2 border-black px-4 py-2 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-black hover:text-[#F5C71A]">REMIX THIS JOURNEY</button>
-                                 {isAdmin && (
+                                 {isAdmin && !currentList.isCustom && (
                                      <button onClick={handleEditMaster} className="bg-red-600 text-white border-2 border-black px-4 py-2 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-red-700">EDIT MASTER</button>
                                  )}
                              </>
@@ -1204,7 +1344,15 @@ function App() {
                   <>
                     <h1 className="text-4xl md:text-6xl font-black tracking-tight mb-2 uppercase">{currentList.title}</h1>
                     <div className="h-1 w-32 bg-black mx-auto mb-4"></div>
-                    <p className="text-lg md:text-xl font-medium italic opacity-90 tracking-widest uppercase mb-6">{currentList.subtitle}</p>
+                    <p className="text-lg md:text-xl font-medium italic opacity-90 tracking-widest uppercase mb-2">{currentList.subtitle}</p>
+                    {currentList.isExternal && (currentList.authorRole === 'curator' || currentList.authorRole === 'admin') && (
+                      <button
+                        onClick={() => { if (currentList.authorUsername) { setSelectedList(null); setSelectedCurator(currentList.authorUsername); } }}
+                        className="font-mono text-sm uppercase tracking-widest opacity-70 hover:opacity-100 hover:underline mb-6"
+                      >
+                        by {currentList.author} <span title="Verified curator">✓</span>
+                      </button>
+                    )}
                   </>
                 )}
             </header>

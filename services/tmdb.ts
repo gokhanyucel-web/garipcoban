@@ -1,7 +1,9 @@
 import { createFilm } from '../constants';
 import { Film } from '../types';
 
-const API_KEY = "6e24d9cca96b2ac08abfc12a9714a52c";
+// Configured via env (vite define). Set TMDB_API_KEY in .env.local (local)
+// and in the hosting provider's env (Vercel). See .env.local.example.
+const API_KEY = process.env.TMDB_API_KEY;
 const BASE_URL = "https://api.themoviedb.org/3";
 const IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w500";
 
