@@ -1,6 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://mdozlygouynzahipgwwi.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1kb3pseWdvdXluemFoaXBnd3dpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUxODE5OTcsImV4cCI6MjA4MDc1Nzk5N30.cdxYlcTKAIgrDtN7b0Y0jL5nJRjIPIPWon1c0u3g91Q';
+// Configured via env (vite define). Local dev -> demo project (.env.local);
+// production -> Gokhan's project (host env vars). Supports both the legacy
+// anon JWT and the new sb_publishable_ key format. See .env.local.example.
+const supabaseUrl = process.env.SUPABASE_URL as string;
+const supabaseKey = process.env.SUPABASE_ANON_KEY as string;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('Missing SUPABASE_URL / SUPABASE_ANON_KEY — set them in .env.local (dev) or the host env (prod).');
+}
 
 export const supabase = createClient(supabaseUrl, supabaseKey);

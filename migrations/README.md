@@ -22,6 +22,9 @@ superuser, which is exactly what these scripts expect.
 
 ## Order
 
+> **Fresh / demo project?** Run `000_base_schema.sql` FIRST — it creates the base
+> tables that prod already has. **Do NOT run `000` on Gokhan's production project.**
+
 | # | File | What it does | Safe? |
 |---|------|--------------|-------|
 | 1 | `001_schema_and_backfill.sql` | Adds real `status`/`privacy`/`author_name`/`updated_at` columns to `custom_lists` and a `role` column to `profiles`; backfills them from existing data. | ✅ live app unaffected |
