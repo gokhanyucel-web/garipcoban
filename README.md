@@ -14,8 +14,9 @@ View your app in AI Studio: https://ai.studio/apps/drive/1jkDHG-X0ZcTlvtdYCYCs81
 
 1. Install dependencies:
    `npm install`
-2. Copy `.env.local.example` to `.env.local` and fill in `GEMINI_API_KEY` and `TMDB_API_KEY`.
-   (`.env.local` is git-ignored — keys never get committed.)
+2. Copy `.env.local.example` to `.env.local` and fill in `SUPABASE_URL`,
+   `SUPABASE_ANON_KEY`, and `TMDB_API_KEY`. (`.env.local` is git-ignored — keys
+   never get committed.)
 3. Run the app:
    `npm run dev`
 

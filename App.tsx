@@ -7,7 +7,6 @@ import FilmModal from './components/FilmModal';
 import VoicesStrip from './components/VoicesStrip';
 import CriticsView from './components/CriticsView';
 import CuratorProfile from './components/CuratorProfile';
-import { getAIListSuggestions } from './services/geminiService';
 import { getDirectorPicks, searchMovies } from './services/tmdb';
 import { Search, Twitter, Instagram, Mail, ShieldAlert, Save, Trash2, LogOut, User, MinusCircle, Check } from 'lucide-react';
 
@@ -807,14 +806,7 @@ function App() {
   const handleGenerateAndCreate = async () => {
       if (!aiCreatorQuery) return;
       setIsGeneratingAI(true);
-      let suggestions: any[] = await getDirectorPicks(aiCreatorQuery);
-      if (suggestions.length === 0) {
-          const geminiSuggestions = await getAIListSuggestions(aiCreatorQuery);
-          suggestions = geminiSuggestions.map(s => ({
-              title: s.title, year: s.year, director: s.director,
-              posterUrl: undefined, overview: undefined, vote_average: 0
-          }));
-      }
+      const suggestions: any[] = await getDirectorPicks(aiCreatorQuery);
       const newId = `custom_${Date.now()}`;
       const createPopulatedFilm = (s: any) => {
           const f = createFilm(s.title, s.year, s.director, s.posterUrl);

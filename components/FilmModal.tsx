@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Film, UserFilmLog } from '../types';
-import { getFilmAnalysis } from '../services/geminiService';
 import { getRealCredits, getRealPoster } from '../services/tmdb'; // TMDB'den veri çek
 import { getListsContainingFilm } from '../constants';
 
@@ -19,7 +18,6 @@ interface FilmModalProps {
 
 const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, onNavigateToList, sherpaNote, isEditing, onSaveNote, isUGC, listTitle }) => {
   const [aiData, setAiData] = useState<{ analysis: string, trivia: string, vibes: string[] } | null>(null);
-  const [loading, setLoading] = useState(false);
   const [noteContent, setNoteContent] = useState(sherpaNote || "");
   const [hoverRating, setHoverRating] = useState(0);
   
@@ -32,8 +30,7 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
     setRealDetails(null);
     setRealPoster(null);
     setAiData(null);
-    setLoading(false);
-    
+
     if (film) {
       
       // 1. TMDB'den kesin veri ve poster çek
@@ -51,16 +48,9 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
           });
       }
 
-      // 2. Gemini'den yorum/analiz çek
+      // 2. Curator insight for custom entries (no external AI dependency).
       if (film.isCustomEntry) {
          setAiData({ analysis: film.plot || "Custom entry curated by user.", trivia: "Added via Custom List.", vibes: [] });
-      } else {
-        setLoading(true);
-        // Call AI with full context
-        getFilmAnalysis(film.title, film.director, film.year).then(data => { 
-            setAiData(data); 
-            setLoading(false); 
-        });
       }
     }
   }, [film]);
@@ -203,23 +193,22 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
                     </p>
                 </div>
 
-                {/* AI ANALYSIS & TRIVIA */}
-                <div className="flex flex-col gap-4">
-                    <div>
-                        <h3 className="font-black text-lg mb-2 uppercase">Why This Film?</h3>
-                        <p className={`text-lg italic font-medium ${loading ? 'opacity-50 animate-pulse' : ''}`}>
-                            {loading ? "Consulting Archives..." : (aiData?.analysis || "Analysis unavailable.")}
-                        </p>
-                    </div>
-                    
-                    {/* TRIVIA BOX */}
-                    {(aiData?.trivia || loading) && (
-                        <div className="bg-black/5 p-4 border-2 border-black/10 border-dashed">
-                            <h3 className="font-black text-xs mb-1 uppercase">★ Trivia</h3>
-                            <p className={`text-sm font-mono opacity-80 ${loading ? 'animate-pulse' : ''}`}>{loading ? "Retrieving classified data..." : aiData?.trivia}</p>
+                {/* CURATOR INSIGHT (custom entries) */}
+                {aiData?.analysis && (
+                    <div className="flex flex-col gap-4">
+                        <div>
+                            <h3 className="font-black text-lg mb-2 uppercase">Why This Film?</h3>
+                            <p className="text-lg italic font-medium">{aiData.analysis}</p>
                         </div>
-                    )}
-                </div>
+
+                        {aiData.trivia && (
+                            <div className="bg-black/5 p-4 border-2 border-black/10 border-dashed">
+                                <h3 className="font-black text-xs mb-1 uppercase">★ Trivia</h3>
+                                <p className="text-sm font-mono opacity-80">{aiData.trivia}</p>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* AI VIBES (CURATOR RECOMMENDS) */}
                 {aiData?.vibes && aiData.vibes.length > 0 && (
