@@ -28,13 +28,17 @@ superuser, which is exactly what these scripts expect.
 | # | File | What it does | Safe? |
 |---|------|--------------|-------|
 | 1 | `001_schema_and_backfill.sql` | Adds real `status`/`privacy`/`author_name`/`updated_at` columns to `custom_lists` and a `role` column to `profiles`; backfills them from existing data. | ✅ live app unaffected |
-| 2 | `002_role_helpers.sql` | Small helper functions used by the rules below. | ✅ |
-| 3 | `002b_role_triggers.sql` | Stops a user from making themselves a curator/admin. | ✅ |
-| 4 | `002c_publish_trigger.sql` | Stops a non-curator from publishing a public list. | ✅ (publishing by non-curators starts being blocked — intended) |
-| 5 | `003_policies.sql` | Defines who can read/write what. Inert until step 7. | ✅ |
-| 6 | `005_designate_curator.sql` | **Edit the email**, then run to make someone a curator (and your first admin). | ✅ |
-| 7 | `004_enable_rls.sql` | **Turns the rules ON. The one dangerous step.** Run the blocks one at a time. | ⚠️ see file |
-| 8 | `006_smoke_test.sql` | Optional checks that the rules behave. | ✅ read-only-ish |
+| 2 | `008_auto_profile.sql` | Auto-creates a `profiles` row per auth user (+ backfills existing users). Required so creating/remixing a list doesn't fail the `custom_lists_user_id_fkey` foreign key. | ✅ |
+| 3 | `002_role_helpers.sql` | Small helper functions used by the rules below. | ✅ |
+| 4 | `002b_role_triggers.sql` | Stops a user from making themselves a curator/admin. | ✅ |
+| 5 | `002c_publish_trigger.sql` | Stops a non-curator from publishing a public list. | ✅ (publishing by non-curators starts being blocked — intended) |
+| 6 | `003_policies.sql` | Defines who can read/write what. Inert until step 8. | ✅ |
+| 7 | `005_designate_curator.sql` | **Edit the email**, then run to make someone a curator (and your first admin). | ✅ |
+| 8 | `004_enable_rls.sql` | **Turns the rules ON. The one dangerous step.** Run the blocks one at a time. | ⚠️ see file |
+| 9 | `006_smoke_test.sql` | Optional checks that the rules behave. | ✅ read-only-ish |
+
+> Demo-only extras: `000_base_schema.sql` (run first on a fresh project) and `007_demo_seed.sql`
+> (sample curators + lists, run after `004`). **Never run those two on prod.**
 
 > Note the numbering quirk: run **005 before 004**. Designate at least one curator/admin *before*
 > enabling RLS, so curator lists are publishable and house-list edits still have an admin the moment
