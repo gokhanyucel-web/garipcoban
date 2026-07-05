@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Film, UserFilmLog } from '../types';
 import { getRealPoster } from '../services/tmdb';
+import { onActivateKey } from './keyboard';
 
 interface FilmCardProps {
   film: Film;
@@ -40,14 +41,14 @@ const FilmCard: React.FC<FilmCardProps> = ({ film, log, onClick, isEditable, onR
          </div>
       )}
 
-      <div onClick={() => onClick(film)} className={`relative flex flex-col items-center justify-center w-32 md:w-44 h-auto min-h-[5.5rem] border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all duration-300 ease-in-out z-10 p-3 gap-1 ${isWatched ? 'bg-black text-[#F5C71A]' : 'bg-[#F5C71A] text-black hover:bg-black hover:text-[#F5C71A]'} ${isEditable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} hover:translate-x-[-4px] hover:translate-y-[-4px] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]`}>
+      <div onClick={() => onClick(film)} role="button" tabIndex={0} onKeyDown={onActivateKey(() => onClick(film))} aria-label={`${film.title} (${film.year})`} className={`relative flex flex-col items-center justify-center w-32 md:w-44 h-auto min-h-[5.5rem] border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all duration-300 ease-in-out z-10 p-3 gap-1 ${isWatched ? 'bg-black text-[#F5C71A]' : 'bg-[#F5C71A] text-black hover:bg-black hover:text-[#F5C71A]'} ${isEditable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} hover:translate-x-[-4px] hover:translate-y-[-4px] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]`}>
         
         {hasNote && <div className="absolute -top-3 -left-1 text-[10px] w-5 h-5 flex items-center justify-center border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] bg-white text-black z-30 pointer-events-none">✎</div>}
 
         {!isEditable && (
-          <div onClick={(e) => { e.stopPropagation(); onUpdateLog && onUpdateLog(film.id, { watched: !isWatched }); }} className="absolute top-0 right-0 z-40 w-8 h-8 flex items-start justify-end p-1 hover:scale-110 transition-transform duration-200" title="Toggle Watched">
+          <button type="button" aria-pressed={isWatched} aria-label={isWatched ? `Mark ${film.title} as unwatched` : `Mark ${film.title} as watched`} onClick={(e) => { e.stopPropagation(); onUpdateLog && onUpdateLog(film.id, { watched: !isWatched }); }} className="absolute top-0 right-0 z-40 w-8 h-8 flex items-start justify-end p-1 hover:scale-110 transition-transform duration-200">
              <div className={`w-3 h-3 border border-current transition-colors duration-300 ${isWatched ? 'bg-[#F5C71A]' : 'bg-transparent'}`}></div>
-          </div>
+          </button>
         )}
 
         {/* GÖRSEL ALANI - HOVER EFEKTİ BURADA */}

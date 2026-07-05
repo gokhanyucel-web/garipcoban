@@ -1,6 +1,7 @@
 import React from 'react';
 import { CuratedList } from '../types';
 import Byline from './Byline';
+import { onActivateKey } from './keyboard';
 
 interface Props {
   lists: CuratedList[];
@@ -32,7 +33,10 @@ const VoicesStrip: React.FC<Props> = ({ lists, onOpenList, onSeeAll }) => {
         {featured.map((list) => (
           <div
             key={list.id}
+            role="button"
+            tabIndex={0}
             onClick={() => onOpenList(list)}
+            onKeyDown={onActivateKey(() => onOpenList(list))}
             className="min-w-[240px] max-w-[240px] flex flex-col cursor-pointer border-4 border-black p-5 bg-[#F5C71A] text-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-4px] hover:translate-y-[-4px] hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] hover:bg-black hover:text-[#F5C71A] transition-all duration-200"
           >
             <h3 className="text-xl font-black uppercase leading-none mb-2">{list.title}</h3>

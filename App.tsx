@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './services/supabase';
-import { Film, CuratedList, UserDatabase, UserFilmLog, Tier, Badge, AI_Suggestion, SortOption, ListCategory, UserRole } from './types';
-import { ARCHIVE_CATEGORIES, getAllFilms, createFilm, BADGE_TITLES, getHash, INITIATE_SYNONYMS, ADEPT_SYNONYMS } from './constants';
+import { Film, CuratedList, UserDatabase, UserFilmLog, Tier, AI_Suggestion, SortOption, ListCategory, UserRole } from './types';
+import { ARCHIVE_CATEGORIES, getAllFilms, createFilm } from './constants';
 import FilmCard from './components/FilmCard';
 import FilmModal from './components/FilmModal';
 import VoicesStrip from './components/VoicesStrip';
 import CriticsView from './components/CriticsView';
 import CuratorProfile from './components/CuratorProfile';
 import Byline from './components/Byline';
+import ListCard from './components/ListCard';
+import { onActivateKey } from './components/keyboard';
 import { getDirectorPicks, searchMovies } from './services/tmdb';
-import { Search, Twitter, Instagram, Mail, ShieldAlert, Save, Trash2, LogOut, User, MinusCircle, Check } from 'lucide-react';
+import { Search, Twitter, Instagram, Mail, Save, Trash2, LogOut, User, MinusCircle } from 'lucide-react';
 
 // --- CONSTANTS REORDERING ---
 // Directors -> Movements -> Genres -> Thematic (mapped as Eras/Thematic)
@@ -23,7 +25,7 @@ const ORDERED_CATEGORIES: ListCategory[] = [
 
 // --- STATIC COMPONENTS ---
 
-const AuthScreen = ({ onAuth, onCancel }: { onAuth: (mode: 'signin' | 'signup', data: any) => Promise<void>, onCancel: () => void }) => {
+const AuthScreen = ({ onAuth, onCancel, intent }: { onAuth: (mode: 'signin' | 'signup', data: any) => Promise<void>, onCancel: () => void, intent?: string }) => {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [formData, setFormData] = useState({
     email: '',
@@ -49,13 +51,14 @@ const AuthScreen = ({ onAuth, onCancel }: { onAuth: (mode: 'signin' | 'signup', 
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#F5C71A] flex items-center justify-center p-6 fixed inset-0 z-50">
+    <div role="dialog" aria-modal="true" aria-label="Sign in to VIRGIL" className="min-h-screen w-full bg-[#F5C71A] flex items-center justify-center p-6 fixed inset-0 z-50">
       <div className="w-full max-w-md bg-black text-[#F5C71A] p-8 border-4 border-black shadow-[12px_12px_0px_0px_rgba(255,255,255,1)] relative">
-        <button onClick={onCancel} className="absolute top-4 right-4 text-white hover:text-[#F5C71A]">✕</button>
+        <button onClick={onCancel} aria-label="Close" className="absolute top-4 right-4 text-white hover:text-[#F5C71A]">✕</button>
         <h1 className="text-5xl font-black uppercase text-center mb-2">VIRGIL</h1>
         <p className="text-center font-mono text-sm opacity-60 mb-8 uppercase tracking-widest">
           {mode === 'signin' ? 'Identify Yourself' : 'Initialize Protocol'}
         </p>
+        {intent && <p className="text-center font-mono text-xs bg-[#F5C71A] text-black px-3 py-2 mb-6 -mt-4">{intent}</p>}
         
         <div className="flex justify-center mb-6 border-b border-[#F5C71A]/30 pb-4">
            <button 
@@ -284,6 +287,7 @@ function App() {
   // Discovery State: curator-published lists from OTHER users (public, read-only here)
   const [externalLists, setExternalLists] = useState<CuratedList[]>([]);
   const [selectedCurator, setSelectedCurator] = useState<string | null>(null);
+  const [pendingVaultListId, setPendingVaultListId] = useState<string | null>(null); // list an anon user tried to save, completed after sign-in
   const [aiCreatorQuery, setAiCreatorQuery] = useState("");
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<(AI_Suggestion & { posterUrl?: string })[]>([]);
@@ -531,6 +535,22 @@ function App() {
     } else { setTierSearchResults([]); }
   }, [tierSearchQuery]);
 
+  // Escape closes the topmost open overlay (dialogs / detail views).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (selectedFilm) { setSelectedFilm(null); return; }
+      if (showTierSearchModal) { setShowTierSearchModal(null); setTierSearchQuery(""); setTierSearchResults([]); return; }
+      if (isAICreatorOpen) { setIsAICreatorOpen(false); return; }
+      if (isSearchOpen) { setIsSearchOpen(false); setGlobalSearchQuery(""); setSearchResults([]); return; }
+      if (view === 'auth') { setView('home'); return; }
+      if (selectedCurator) { setSelectedCurator(null); return; }
+      if (selectedList && !isEditorMode) { setSelectedList(null); return; }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedFilm, showTierSearchModal, isAICreatorOpen, isSearchOpen, view, selectedCurator, selectedList, isEditorMode]);
+
   // --- HANDLERS ---
 
   const handleAuth = async (mode: 'signin' | 'signup', data: any) => {
@@ -547,9 +567,17 @@ function App() {
         setView('home');
       }
     } else {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) alert(error.message);
-      else {
+      else if (pendingVaultListId && data.session) {
+        // Complete the save the user intended before we bounced them to sign-in,
+        // then take them to that list rather than the generic vault.
+        const listId = pendingVaultListId;
+        setPendingVaultListId(null);
+        await supabase.from('vault').upsert({ user_id: data.session.user.id, list_id: listId }, { onConflict: 'user_id, list_id' });
+        setVaultIds(prev => prev.includes(listId) ? prev : [...prev, listId]);
+        handleNavigateToList(listId);
+      } else {
         setView('vault');
         localStorage.setItem('virgil_active_view', 'vault');
       }
@@ -595,13 +623,16 @@ function App() {
           notes: newLog.notes || ''
       }, { onConflict: 'user_id, film_id' }); 
       
-      if (error) console.error('Supabase Save Error:', error);
+      if (error) {
+        console.error('Supabase Save Error:', error);
+        setUserDb(prev => ({ ...prev, [filmId]: currentLog })); // roll back optimistic update
+      }
     }
   };
 
   const handleToggleVault = async (e: React.MouseEvent, listId: string) => {
     e.stopPropagation();
-    if (!session) { setView('auth'); return; }
+    if (!session) { setPendingVaultListId(listId); setView('auth'); return; }
 
     const isRemoving = vaultIds.includes(listId);
     let newVaultIds = isRemoving ? vaultIds.filter(id => id !== listId) : [...vaultIds, listId];
@@ -1099,8 +1130,6 @@ function App() {
       });
   };
   const currentTiers = getSortedTiers(currentTiersBase);
-  const isSavedInVault = currentList ? vaultIds.includes(currentList.id) : false;
-  const canRemix = currentList ? !currentList.isCustom : false;
   // True only for the user's OWN custom lists (external curator lists are NOT editable here).
   const isOwnList = currentList ? customLists.some(l => l.id === currentList.id) : false;
 
@@ -1120,22 +1149,22 @@ function App() {
   return (
     <>
       {/* 1. AUTH SCREEN (Modal/Overlay) */}
-      {view === 'auth' && <AuthScreen onAuth={handleAuth} onCancel={() => setView('home')} />}
+      {view === 'auth' && <AuthScreen onAuth={handleAuth} onCancel={() => setView('home')} intent={pendingVaultListId ? 'Sign in to save this to your vault' : undefined} />}
 
       {/* 2. GLOBAL SEARCH */}
       {isSearchOpen && (
-           <div className="fixed inset-0 z-[60] bg-[#F5C71A]/95 backdrop-blur-md flex flex-col p-8 animate-fadeIn">
+           <div role="dialog" aria-modal="true" aria-label="Search films" className="fixed inset-0 z-[60] bg-[#F5C71A]/95 backdrop-blur-md flex flex-col p-8 animate-fadeIn">
               <div className="w-full max-w-4xl mx-auto flex flex-col gap-8 h-full">
                   <div className="flex justify-between items-center border-b-4 border-black pb-4">
                      <h2 className="text-4xl font-black uppercase">Search Database</h2>
-                     <button onClick={() => { setIsSearchOpen(false); setGlobalSearchQuery(""); setSearchResults([]); }} className="text-2xl font-black hover:scale-110">X</button>
+                     <button onClick={() => { setIsSearchOpen(false); setGlobalSearchQuery(""); setSearchResults([]); }} aria-label="Close search" className="text-2xl font-black hover:scale-110">X</button>
                   </div>
                   <input autoFocus type="text" placeholder="Search films..." className="w-full bg-transparent text-3xl md:text-5xl font-black uppercase placeholder-black/30 border-none outline-none" value={globalSearchQuery} onChange={(e) => setGlobalSearchQuery(e.target.value)} />
                   <div className="flex-1 overflow-y-auto mt-4 pr-2">
                      {globalSearchQuery.length > 2 && (
                        <div className="grid grid-cols-1 gap-4">
                           {searchResults.map(film => (
-                             <div key={film.id} onClick={() => { setSelectedFilm(film); setIsSearchOpen(false); setGlobalSearchQuery(""); setSearchResults([]); }} className="p-4 border-2 border-black hover:bg-black hover:text-[#F5C71A] cursor-pointer flex justify-between items-center group">
+                             <div key={film.id} role="button" tabIndex={0} onKeyDown={onActivateKey(() => { setSelectedFilm(film); setIsSearchOpen(false); setGlobalSearchQuery(""); setSearchResults([]); })} onClick={() => { setSelectedFilm(film); setIsSearchOpen(false); setGlobalSearchQuery(""); setSearchResults([]); }} className="p-4 border-2 border-black hover:bg-black hover:text-[#F5C71A] cursor-pointer flex justify-between items-center group">
                                 <div className="flex items-center gap-4">
                                    {film.posterUrl && <img src={film.posterUrl} className="w-12 h-16 object-cover border border-black" />}
                                    <div><h3 className="text-xl font-black uppercase">{film.title}</h3><p className="font-mono text-sm opacity-60 group-hover:opacity-100">{film.year}</p></div>
@@ -1177,21 +1206,20 @@ function App() {
                                 const list = masterOverrides[originalList.id] || originalList;
                                 const isSaved = vaultIds.includes(list.id);
                                 return (
-                                  <div key={list.id} onClick={() => { setSelectedList(list); setIsEditorMode(false); }} className={`group relative flex flex-col text-left cursor-pointer border-4 border-black p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] bg-[#F5C71A] text-black hover:translate-x-[-4px] hover:translate-y-[-4px] hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] hover:bg-black hover:text-[#F5C71A] transition-all duration-200`}>
-                                    {isSaved && (
-                                        <button 
+                                  <ListCard key={list.id} list={list} onOpen={(l) => { setSelectedList(l); setIsEditorMode(false); }}>
+                                    {isSaved ? (
+                                        <button
                                             onClick={(e) => handleToggleVault(e, list.id)}
-                                            className="absolute top-2 right-2 bg-black text-yellow-400 text-[10px] px-2 py-1 font-bold flex items-center gap-1 group/btn hover:bg-red-600 hover:text-white"
+                                            aria-label={`Remove ${list.title} from vault`}
+                                            className="absolute top-2 right-2 bg-black text-yellow-400 text-[10px] px-2 py-1 font-bold flex items-center gap-1 group/btn hover:bg-red-600 hover:text-white z-10"
                                         >
                                             <span className="group-hover/btn:hidden flex items-center gap-1">✓ SAVED</span>
                                             <span className="hidden group-hover/btn:inline">REMOVE</span>
                                         </button>
+                                    ) : (
+                                        <button onClick={(e) => handleToggleVault(e, list.id)} aria-label={`Add ${list.title} to vault`} className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center border-2 border-black hover:bg-black hover:text-[#F5C71A] font-black transition-colors z-10">+</button>
                                     )}
-                                    {!isSaved && <button onClick={(e) => handleToggleVault(e, list.id)} className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center border-2 border-black hover:bg-black hover:text-[#F5C71A] font-black transition-colors z-10" title="Add to Vault">+</button>}
-                                    <h3 className="text-2xl font-black uppercase leading-none mb-2 mt-2 pr-8">{list.title}</h3>
-                                    <p className="text-sm font-bold uppercase opacity-80 mb-4">{list.subtitle}</p>
-                                    <div className="mt-auto border-t-2 border-current pt-2 flex justify-between items-center opacity-60 text-[10px] font-mono"><span>{list.tiers.length} Tiers</span><span>{list.tiers.reduce((acc, t) => acc + t.films.length, 0)} Films</span></div>
-                                  </div>
+                                  </ListCard>
                                 );
                               })}
                             </div>
@@ -1232,7 +1260,7 @@ function App() {
                             <div className="flex items-center gap-4"><div className="h-6 w-6 bg-yellow-600 border-2 border-black"></div><h2 className="text-2xl md:text-3xl font-black uppercase tracking-widest border-b-4 border-black pb-2 w-full text-yellow-700">Completed Journeys</h2></div>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                 {completed.map(list => (
-                                    <div key={list.id} onClick={() => setSelectedList(list)} className="border-4 border-black p-4 bg-black text-[#F5C71A] cursor-pointer hover:scale-[1.02] shadow-[4px_4px_0px_0px_#B45309] relative transition-all group">
+                                    <div key={list.id} role="button" tabIndex={0} onKeyDown={onActivateKey(() => setSelectedList(list))} onClick={() => setSelectedList(list)} className="border-4 border-black p-4 bg-black text-[#F5C71A] cursor-pointer hover:scale-[1.02] shadow-[4px_4px_0px_0px_#B45309] relative transition-all group">
                                         <div className="absolute top-2 right-2 border border-[#F5C71A] px-2 py-0.5 text-[10px] font-black uppercase tracking-widest">MASTERED</div>
                                         <h3 className="font-black uppercase mt-4 text-xl">{list.title}</h3>
                                         <div className="mt-2 text-xs font-mono opacity-80 border-t border-[#F5C71A] pt-1">100% COMPLETE</div>
@@ -1249,7 +1277,7 @@ function App() {
                             {active.map(list => {
                                const progress = getListProgress(list);
                                return (
-                                 <div key={list.id} onClick={() => setSelectedList(list)} className="border-4 border-black p-4 bg-[#F5C71A] text-black cursor-pointer hover:bg-black hover:text-[#F5C71A] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative transition-all group">
+                                 <div key={list.id} role="button" tabIndex={0} onKeyDown={onActivateKey(() => setSelectedList(list))} onClick={() => setSelectedList(list)} className="border-4 border-black p-4 bg-[#F5C71A] text-black cursor-pointer hover:bg-black hover:text-[#F5C71A] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative transition-all group">
                                     <h3 className="font-black uppercase">{list.title}</h3>
                                     {list.isExternal && <Byline list={list} className="block opacity-70 mt-1" />}
                                     <button
@@ -1278,7 +1306,7 @@ function App() {
                               <h3 className="font-bold font-mono uppercase opacity-70 border-b border-black">Drafts (Work in Progress)</h3>
                               {drafts.length === 0 && <p className="text-sm italic opacity-50">No drafts.</p>}
                               {drafts.map(list => (
-                                 <div key={list.id} onClick={() => { setSelectedList(list); setEditingList(list); setIsEditorMode(true); setAiSuggestions([]); }} className="relative flex flex-col text-left cursor-pointer border-2 border-dashed border-black p-4 bg-[#F5C71A] hover:bg-black hover:text-yellow-400">
+                                 <div key={list.id} role="button" tabIndex={0} onKeyDown={onActivateKey(() => { setSelectedList(list); setEditingList(list); setIsEditorMode(true); setAiSuggestions([]); })} onClick={() => { setSelectedList(list); setEditingList(list); setIsEditorMode(true); setAiSuggestions([]); }} className="relative flex flex-col text-left cursor-pointer border-2 border-dashed border-black p-4 bg-[#F5C71A] hover:bg-black hover:text-yellow-400">
                                     <div className="absolute top-0 right-0 bg-black text-white px-2 text-[10px] font-bold">DRAFT</div>
                                     <h3 className="text-lg font-black uppercase">{list.title}</h3>
                                  </div>
@@ -1288,7 +1316,7 @@ function App() {
                           <div className="flex flex-col gap-4">
                               <h3 className="font-bold font-mono uppercase opacity-70 border-b border-black">Published Journeys</h3>
                               {published.length === 0 && <p className="text-sm italic opacity-50">No published lists.</p>}
-                              {published.map(list => <div key={list.id} onClick={() => setSelectedList(list)} className="relative flex flex-col text-left cursor-pointer border-4 border-black p-4 bg-[#F5C71A] hover:bg-black hover:text-yellow-400"><div className="absolute top-0 right-0 bg-black text-yellow-400 px-2 text-[10px] font-bold">PUBLISHED</div><h3 className="text-lg font-black uppercase">{list.title}</h3></div>)}
+                              {published.map(list => <div key={list.id} role="button" tabIndex={0} onKeyDown={onActivateKey(() => setSelectedList(list))} onClick={() => setSelectedList(list)} className="relative flex flex-col text-left cursor-pointer border-4 border-black p-4 bg-[#F5C71A] hover:bg-black hover:text-yellow-400"><div className="absolute top-0 right-0 bg-black text-yellow-400 px-2 text-[10px] font-bold">PUBLISHED</div><h3 className="text-lg font-black uppercase">{list.title}</h3></div>)}
                           </div>
                           )}
                        </div>
@@ -1357,12 +1385,11 @@ function App() {
                     <div className="h-1 w-32 bg-black mx-auto mb-4"></div>
                     <p className="text-lg md:text-xl font-medium italic opacity-90 tracking-widest uppercase mb-2">{currentList.subtitle}</p>
                     {currentList.isExternal && (currentList.authorRole === 'curator' || currentList.authorRole === 'admin') && (
-                      <button
+                      <Byline
+                        list={currentList}
                         onClick={() => { if (currentList.authorUsername) { setSelectedList(null); setSelectedCurator(currentList.authorUsername); } }}
-                        className="font-mono text-sm uppercase tracking-widest opacity-70 hover:opacity-100 hover:underline mb-6"
-                      >
-                        by {currentList.author} <span title="Verified curator">✓</span>
-                      </button>
+                        className="opacity-70 hover:opacity-100 mb-6"
+                      />
                     )}
                   </>
                 )}
@@ -1370,7 +1397,7 @@ function App() {
             
             {showTierSearchModal && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 pointer-events-auto">
-                 <div className="w-full max-w-2xl bg-[#F5C71A] border-4 border-black p-6 shadow-[8px_8px_0px_0px_#fff]">
+                 <div role="dialog" aria-modal="true" aria-label="Add film to tier" className="w-full max-w-2xl bg-[#F5C71A] border-4 border-black p-6 shadow-[8px_8px_0px_0px_#fff]">
                     <h3 className="text-xl font-black uppercase mb-4">Add to Tier</h3>
                     <input autoFocus type="text" placeholder="Search database or type custom..." className="w-full p-4 text-xl font-mono border-2 border-black bg-white mb-4 uppercase" value={tierSearchQuery} onChange={(e) => setTierSearchQuery(e.target.value)} />
                     <div className="max-h-60 overflow-y-auto border-2 border-black bg-white">

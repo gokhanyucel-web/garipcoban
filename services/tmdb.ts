@@ -164,9 +164,9 @@ export const searchMovies = async (query: string): Promise<Film[]> => {
             
             film.plot = m.overview;
             film.imdbScore = m.vote_average;
-            
-            film.id = `${film.id}-${m.id}`;
-            
+
+            // Keep the slug id (from createFilm) so a film marked watched from
+            // search shares the same userDb key as the same film inside a list.
             return film;
         });
 

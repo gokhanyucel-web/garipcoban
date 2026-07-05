@@ -1,5 +1,6 @@
 import React from 'react';
 import { CuratedList } from '../types';
+import ListCard from './ListCard';
 
 interface Props {
   lists: CuratedList[];
@@ -59,18 +60,7 @@ const CriticsView: React.FC<Props> = ({ lists, onOpenList, onOpenCurator }) => {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {c.lists.map((list) => (
-              <div
-                key={list.id}
-                onClick={() => onOpenList(list)}
-                className="group relative flex flex-col text-left cursor-pointer border-4 border-black p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] bg-[#F5C71A] text-black hover:translate-x-[-4px] hover:translate-y-[-4px] hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] hover:bg-black hover:text-[#F5C71A] transition-all duration-200"
-              >
-                <h3 className="text-2xl font-black uppercase leading-none mb-2">{list.title}</h3>
-                <p className="text-sm font-bold uppercase opacity-80 mb-4">{list.subtitle}</p>
-                <div className="mt-auto border-t-2 border-current pt-2 flex justify-between items-center opacity-60 text-[10px] font-mono">
-                  <span>{list.tiers.length} Tiers</span>
-                  <span>{list.tiers.reduce((acc, t) => acc + t.films.length, 0)} Films</span>
-                </div>
-              </div>
+              <ListCard key={list.id} list={list} onOpen={onOpenList} />
             ))}
           </div>
         </section>

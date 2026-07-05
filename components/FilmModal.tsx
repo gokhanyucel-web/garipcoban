@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Film, UserFilmLog } from '../types';
-import { getRealCredits, getRealPoster } from '../services/tmdb'; // TMDB'den veri çek
-import { getListsContainingFilm } from '../constants';
+import { getRealCredits, getRealPoster } from '../services/tmdb';
 
 interface FilmModalProps {
   film: Film | null;
@@ -97,8 +96,8 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-5xl bg-[#F5C71A] border-4 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] p-6 md:p-8 max-h-[90vh] overflow-y-auto text-black">
-        <button onClick={onClose} className="absolute top-4 right-4 z-20 text-black hover:bg-black hover:text-[#F5C71A] w-8 h-8 border-2 border-black flex items-center justify-center font-bold transition-colors">X</button>
+      <div role="dialog" aria-modal="true" aria-label={film.title} className="relative w-full max-w-5xl bg-[#F5C71A] border-4 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] p-6 md:p-8 max-h-[90vh] overflow-y-auto text-black">
+        <button onClick={onClose} aria-label="Close" className="absolute top-4 right-4 z-20 text-black hover:bg-black hover:text-[#F5C71A] w-8 h-8 border-2 border-black flex items-center justify-center font-bold transition-colors">X</button>
         <div className="flex flex-col md:flex-row gap-8">
           
           {/* LEFT COLUMN: Poster, User Actions, Credits */}
