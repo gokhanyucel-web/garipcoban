@@ -19,12 +19,12 @@ const FilmCard: React.FC<FilmCardProps> = ({ film, log, onClick, isEditable, onR
   const [displayPoster, setDisplayPoster] = useState(film.posterUrl);
 
   useEffect(() => {
-    if (film.posterUrl && film.posterUrl.includes("placehold.co")) {
+    setDisplayPoster(film.posterUrl);
+    // Backfill a real poster from TMDB when there's none or only a placeholder.
+    if (!film.posterUrl || film.posterUrl.includes("placehold.co")) {
       getRealPoster(film.title, film.year).then((realUrl) => {
         if (realUrl) setDisplayPoster(realUrl);
       });
-    } else {
-      setDisplayPoster(film.posterUrl);
     }
   }, [film.title, film.year, film.posterUrl]);
 
@@ -52,12 +52,19 @@ const FilmCard: React.FC<FilmCardProps> = ({ film, log, onClick, isEditable, onR
 
         {/* GÖRSEL ALANI - HOVER EFEKTİ BURADA */}
         <div className="w-full h-48 md:h-60 mb-2 overflow-hidden border border-current relative bg-black/10">
-            <img 
-                src={displayPoster} 
-                alt={film.title}
-                className={`w-full h-full object-cover transition-all duration-500 ${isWatched ? 'grayscale-0 opacity-100' : 'grayscale opacity-80 group-hover:grayscale-0 group-hover:opacity-100'}`}
-                loading="lazy"
-            />
+            {displayPoster ? (
+              <img
+                  src={displayPoster}
+                  alt={`Poster for ${film.title}`}
+                  onError={() => setDisplayPoster(undefined)}
+                  className={`w-full h-full object-cover transition-all duration-500 ${isWatched ? 'grayscale-0 opacity-100' : 'grayscale opacity-80 group-hover:grayscale-0 group-hover:opacity-100'}`}
+                  loading="lazy"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center p-2 text-center">
+                <span className="text-[10px] font-mono uppercase opacity-50 leading-tight">{film.title}</span>
+              </div>
+            )}
         </div>
 
         {rating > 0 && isWatched && <div className="absolute bottom-1 right-1 flex items-center gap-0.5 text-[10px] font-black opacity-80"><span>★</span><span>{rating}</span></div>}

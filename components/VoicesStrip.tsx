@@ -33,12 +33,12 @@ const VoicesStrip: React.FC<Props> = ({ lists, onOpenList, onSeeAll }) => {
           <div
             key={list.id}
             onClick={() => onOpenList(list)}
-            className="min-w-[240px] max-w-[240px] flex flex-col cursor-pointer border-4 border-black p-5 bg-black text-[#F5C71A] shadow-[6px_6px_0px_0px_rgba(0,0,0,0.25)] hover:translate-x-[-3px] hover:translate-y-[-3px] transition-all"
+            className="min-w-[240px] max-w-[240px] flex flex-col cursor-pointer border-4 border-black p-5 bg-[#F5C71A] text-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-4px] hover:translate-y-[-4px] hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] hover:bg-black hover:text-[#F5C71A] transition-all duration-200"
           >
             <h3 className="text-xl font-black uppercase leading-none mb-2">{list.title}</h3>
-            <p className="text-xs font-bold uppercase opacity-70 mb-4">{list.subtitle}</p>
-            <div className="mt-auto pt-3 border-t border-[#F5C71A]/30">
-              <Byline list={list} className="opacity-90" />
+            <p className="text-sm font-bold uppercase opacity-80 mb-4">{list.subtitle}</p>
+            <div className="mt-auto pt-3 border-t-2 border-current">
+              <Byline list={list} />
             </div>
           </div>
         ))}

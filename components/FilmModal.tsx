@@ -24,18 +24,20 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
   // Kesin veriler için state (TMDB)
   const [realDetails, setRealDetails] = useState<{director: string, cast: string[], runtime: number, screenplay: string[], music: string[], overview: string, vote_average: number, dop: string[], keywords: string[]} | null>(null);
   const [realPoster, setRealPoster] = useState<string | null>(null);
+  const [posterFailed, setPosterFailed] = useState(false);
 
   useEffect(() => {
     setNoteContent(sherpaNote || "");
     setRealDetails(null);
     setRealPoster(null);
+    setPosterFailed(false);
     setAiData(null);
 
     if (film) {
-      
+
       // 1. TMDB'den kesin veri ve poster çek
       getRealCredits(film.title, film.year).then(data => setRealDetails(data));
-      if (film.posterUrl && film.posterUrl.includes("placehold.co")) {
+      if (!film.posterUrl || film.posterUrl.includes("placehold.co")) {
           getRealPoster(film.title, film.year).then(url => setRealPoster(url));
       } else {
           setRealPoster(film.posterUrl || null);
@@ -101,7 +103,11 @@ const FilmModal: React.FC<FilmModalProps> = ({ film, log, onUpdateLog, onClose, 
           
           {/* LEFT COLUMN: Poster, User Actions, Credits */}
           <div className="md:w-1/3 flex-shrink-0 flex flex-col items-center md:items-start space-y-4">
-            <img src={displayImage || ''} className="w-full border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] object-cover" />
+            {displayImage && !posterFailed ? (
+              <img src={displayImage} alt={`Poster for ${film.title}`} onError={() => setPosterFailed(true)} className="w-full border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] object-cover" />
+            ) : (
+              <div className="w-full aspect-[2/3] border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] bg-black/10 flex items-center justify-center p-4 text-center"><span className="font-black uppercase text-lg">{film.title}</span></div>
+            )}
             
             <div className="w-full border-4 border-black bg-black text-[#F5C71A] p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                <button onClick={() => onUpdateLog && onUpdateLog(film.id, { watched: !watched })} className={`w-full py-2 font-black uppercase border-2 border-[#F5C71A] transition-colors mb-4 ${watched ? 'bg-[#F5C71A] text-black' : 'bg-transparent text-[#F5C71A]'}`}>{watched ? '✓ WATCHED' : 'MARK AS WATCHED'}</button>

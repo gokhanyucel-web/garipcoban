@@ -36,6 +36,7 @@ superuser, which is exactly what these scripts expect.
 | 7 | `005_designate_curator.sql` | **Edit the email**, then run to make someone a curator (and your first admin). | ✅ |
 | 8 | `004_enable_rls.sql` | **Turns the rules ON. The one dangerous step.** Run the blocks one at a time. | ⚠️ see file |
 | 9 | `006_smoke_test.sql` | Optional checks that the rules behave. | ✅ read-only-ish |
+| 10 | `009_security_fixes.sql` | Revoke anon access to `role_of()` so a user's role can't be enumerated by UUID. | ✅ run any time |
 
 > Demo-only extras: `000_base_schema.sql` (run first on a fresh project) and `007_demo_seed.sql`
 > (sample curators + lists, run after `004`). **Never run those two on prod.**

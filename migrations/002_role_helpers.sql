@@ -58,7 +58,10 @@ $$;
 revoke all on function public.role_of(uuid)      from public;
 revoke all on function public.is_admin()         from public;
 revoke all on function public.is_publisher(uuid) from public;
-grant execute on function public.role_of(uuid)      to anon, authenticated;
+-- role_of is not used by any policy; keep it off anon so callers can't
+-- enumerate arbitrary users' roles. is_admin/is_publisher must stay on anon
+-- because the public discovery-read policy evaluates them.
+grant execute on function public.role_of(uuid)      to authenticated;
 grant execute on function public.is_admin()         to anon, authenticated;
 grant execute on function public.is_publisher(uuid) to anon, authenticated;
 

@@ -7,6 +7,7 @@ import FilmModal from './components/FilmModal';
 import VoicesStrip from './components/VoicesStrip';
 import CriticsView from './components/CriticsView';
 import CuratorProfile from './components/CuratorProfile';
+import Byline from './components/Byline';
 import { getDirectorPicks, searchMovies } from './services/tmdb';
 import { Search, Twitter, Instagram, Mail, ShieldAlert, Save, Trash2, LogOut, User, MinusCircle, Check } from 'lucide-react';
 
@@ -150,7 +151,7 @@ interface MainLayoutProps {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children, activeView, session, role, isCurator, onLogout, onOpenSearch, onNavigate }) => (
   <div className="min-h-screen w-full bg-[#F5C71A] text-black font-sans selection:bg-black selection:text-[#F5C71A] flex flex-col transition-colors duration-300">
-    <header className="pt-12 pb-8 text-center px-4 relative">
+    <header className="pt-20 md:pt-12 pb-8 text-center px-4 relative">
          <div className="absolute top-8 right-8 flex gap-4">
              {role === 'admin' && <span className="bg-red-600 text-white px-2 py-1 text-xs font-black uppercase border border-black">ADMIN</span>}
              {role === 'curator' && <span className="bg-black text-[#F5C71A] px-2 py-1 text-xs font-black uppercase border border-black">CURATOR ✓</span>}
@@ -171,7 +172,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, activeView, session, 
              )}
          </div>
 
-        <h1 className="text-7xl md:text-9xl font-black tracking-tighter mb-2 uppercase leading-none cursor-pointer" onClick={() => onNavigate('home')}>VIRGIL</h1>
+        <h1 className="text-6xl sm:text-7xl md:text-9xl font-black tracking-tighter mb-2 uppercase leading-none cursor-pointer" onClick={() => onNavigate('home')}>VIRGIL</h1>
         <p className="text-xl md:text-3xl font-bold font-mono tracking-widest uppercase opacity-80 mb-8">Curated Cinematic Journeys</p>
         
         <div className="flex justify-center items-center gap-0 border-b-4 border-black w-full max-w-2xl mx-auto">
@@ -488,11 +489,16 @@ function App() {
 
     initApp();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
       if (!mounted) return;
       setSession(newSession);
       if (newSession) {
-        fetchUserData(newSession.user.id);
+        // Only (re)load on real sign-in / initial session. Ignoring TOKEN_REFRESHED
+        // and USER_UPDATED avoids clobbering in-progress edits (unsaved drafts/ratings).
+        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+          fetchUserData(newSession.user.id);
+          fetchDiscoveryLists(newSession.user.id); // rescope discovery to exclude own lists
+        }
       } else {
         setUserDb({});
         setVaultIds([]);
@@ -500,6 +506,7 @@ function App() {
         setProfile({ name: "Initiate", motto: "The Unwritten", role: 'user' });
         setView('home');
         localStorage.removeItem('virgil_active_view');
+        fetchDiscoveryLists(undefined); // reset discovery scope for logged-out view
       }
     });
 
@@ -663,6 +670,12 @@ function App() {
       privacy: 'private', // a remix is a personal copy; only curators publish
       originalListId: deepCopy.id,
       isCustom: true,
+      // Clear discovery-only fields so the fork isn't mistaken for the curator's
+      // list (no false "by {curator} ✓" byline, and it files under Drafts).
+      isExternal: false,
+      authorRole: undefined,
+      authorUsername: undefined,
+      authorAvatar: undefined,
       sherpaNotes: {},
       status: 'draft'
     };
@@ -859,10 +872,10 @@ function App() {
              status: newStatus,
              updated_at: updatedAt
         };
-        // Write the REAL columns so RLS + discovery work; keep the JSON mirror too.
+        // Upsert (not update) so publishing a never-saved new list inserts the row
+        // instead of silently matching zero rows and losing the list on reload.
         await supabase.from('custom_lists')
-          .update({ content: contentPayload, status: newStatus, privacy: newPrivacy, author_name: updatedList.author, updated_at: updatedAt })
-          .eq('id', updatedList.id);
+          .upsert({ id: updatedList.id, user_id: session.user.id, title: updatedList.title, content: contentPayload, status: newStatus, privacy: newPrivacy, author_name: updatedList.author, updated_at: updatedAt }, { onConflict: 'id' });
 
         // Ensure Vault Link on Publish Toggle as well
         await supabase.from('vault').upsert(
@@ -1071,6 +1084,9 @@ function App() {
     return { active, drafts, published, completed };
   };
   const { active, drafts, published, completed } = getVaultLists();
+  // Only curators/admins can publish, so hide the (otherwise permanently empty)
+  // Published column from regular users.
+  const showPublished = isCurator || published.length > 0;
 
   // --- RENDER HELPERS ---
   const currentList = isEditorMode ? editingList : selectedList;
@@ -1235,14 +1251,15 @@ function App() {
                                return (
                                  <div key={list.id} onClick={() => setSelectedList(list)} className="border-4 border-black p-4 bg-[#F5C71A] text-black cursor-pointer hover:bg-black hover:text-[#F5C71A] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative transition-all group">
                                     <h3 className="font-black uppercase">{list.title}</h3>
-                                    <button 
-                                        onClick={(e) => handleToggleVault(e, list.id)} 
+                                    {list.isExternal && <Byline list={list} className="block opacity-70 mt-1" />}
+                                    <button
+                                        onClick={(e) => handleToggleVault(e, list.id)}
                                         className="absolute top-2 right-2 text-red-500 hover:text-red-700 hover:scale-110 transition-all opacity-0 group-hover:opacity-100"
-                                        title="Remove from Vault"
+                                        title={list.isExternal ? "Untrack" : "Remove from Vault"}
                                     >
-                                        <MinusCircle size={20} /> 
+                                        <MinusCircle size={20} />
                                     </button>
-                                    <div className="mt-2 text-xs font-mono font-bold border-t border-current pt-1 flex justify-between items-center"><span>{progress}% Complete</span>{list.isCustom && (<button onClick={(e) => handleToggleVault(e, list.id)} className="text-red-600 hover:text-white hover:bg-red-600 p-1 rounded" title="Delete Journey"><Trash2 size={14} /></button>)}</div>
+                                    <div className="mt-2 text-xs font-mono font-bold border-t border-current pt-1 flex justify-between items-center"><span>{progress}% Complete</span>{list.isCustom && customLists.some(l => l.id === list.id) && (<button onClick={(e) => handleToggleVault(e, list.id)} className="text-red-600 hover:text-white hover:bg-red-600 p-1 rounded" title="Delete Journey"><Trash2 size={14} /></button>)}</div>
                                  </div>
                                );
                             })}
@@ -1256,7 +1273,7 @@ function App() {
                           <button onClick={() => setIsAICreatorOpen(true)} className="bg-black text-[#F5C71A] px-4 py-2 font-black uppercase text-sm hover:scale-105 transition-transform">+ Create Journey</button>
                        </div>
                        
-                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                       <div className={`grid grid-cols-1 ${showPublished ? 'md:grid-cols-2' : ''} gap-8`}>
                           <div className="flex flex-col gap-4">
                               <h3 className="font-bold font-mono uppercase opacity-70 border-b border-black">Drafts (Work in Progress)</h3>
                               {drafts.length === 0 && <p className="text-sm italic opacity-50">No drafts.</p>}
@@ -1267,11 +1284,13 @@ function App() {
                                  </div>
                               ))}
                           </div>
+                          {showPublished && (
                           <div className="flex flex-col gap-4">
                               <h3 className="font-bold font-mono uppercase opacity-70 border-b border-black">Published Journeys</h3>
                               {published.length === 0 && <p className="text-sm italic opacity-50">No published lists.</p>}
                               {published.map(list => <div key={list.id} onClick={() => setSelectedList(list)} className="relative flex flex-col text-left cursor-pointer border-4 border-black p-4 bg-[#F5C71A] hover:bg-black hover:text-yellow-400"><div className="absolute top-0 right-0 bg-black text-yellow-400 px-2 text-[10px] font-bold">PUBLISHED</div><h3 className="text-lg font-black uppercase">{list.title}</h3></div>)}
                           </div>
+                          )}
                        </div>
                     </section>
                 </div>
@@ -1303,7 +1322,7 @@ function App() {
         <div className="min-h-screen w-full bg-[#F5C71A] text-black pb-20 overflow-x-hidden">
             <nav className="fixed top-0 left-0 w-full z-40 px-6 py-4 flex justify-between items-start pointer-events-none">
               <button onClick={() => { setSelectedList(null); setIsEditorMode(false); }} className="pointer-events-auto bg-[#F5C71A] border-2 border-black px-4 py-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] font-black uppercase tracking-wider text-sm hover:bg-black hover:text-[#F5C71A] transition-colors">← Back</button>
-              <div className="flex gap-2 pointer-events-auto">
+              <div className="flex flex-wrap gap-2 justify-end pointer-events-auto max-w-[65%]">
                  {isEditorMode ? (
                      <div className="flex gap-2 items-center">
                         {isCurator && <button onClick={handleTogglePublish} className={`border-2 border-black px-4 py-2 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 transition-all ${editingList?.status === 'published' ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>{editingList?.status === 'published' ? 'UNPUBLISH' : 'PUBLISH'}</button>}
@@ -1326,7 +1345,7 @@ function App() {
                  )}
               </div>
             </nav>
-            <header className="pt-20 pb-8 text-center px-4 relative z-20 flex flex-col items-center">
+            <header className="pt-36 md:pt-20 pb-8 text-center px-4 relative z-20 flex flex-col items-center">
                 {isEditorMode ? (
                    <div className="flex flex-col gap-2 w-full max-w-xl relative z-50">
                       <input value={editingList?.title} onChange={(e) => setEditingList({...editingList!, title: e.target.value})} className="text-4xl md:text-6xl font-black uppercase text-center bg-transparent border-b-2 border-black focus:outline-none" />
